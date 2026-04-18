@@ -394,23 +394,49 @@ class RokanAgent:
             return
 
         # Generic slash routing — /run, /open, /find, /remind, /ping, etc.
+        _SLASH_ALIASES = {
+            "run": "shell", "shell": "shell", "exec": "shell",
+            "open": "launch", "launch": "launch", "start": "launch",
+            "find": "files", "files": "files",
+            "ping": "network", "net": "network", "ip": "network",
+            "git": "git", "commit": "git", "diff": "git",
+            "brief": "briefing", "morning": "briefing",
+            "auto": "automate", "cron": "automate",
+            "cal": "calendar", "schedule": "calendar",
+            "mail": "email", "inbox": "email",
+            "vol": "media", "volume": "media", "brightness": "media",
+            "screen": "screenshot", "ss": "screenshot",
+            "clip": "clipboard", "copy": "clipboard",
+            "time": "datetime", "date": "datetime",
+            "remind": "reminder", "timer": "reminder",
+            "notify": "notify",
+            "lock": "power", "sleep": "power", "shutdown": "power",
+        }
+
         cmd_name = command[1:]  # strip leading /
-        skill = self.skills.get(cmd_name)
-        # If no exact name match, find by can_handle (e.g. /run → shell skill)
+        # Resolve alias first, then try direct name
+        resolved = _SLASH_ALIASES.get(cmd_name, cmd_name)
+        skill = self.skills.get(resolved)
         if not skill:
-            match = self.skills.find_handler(cmd, threshold=0.8)
+            skill = self.skills.get(cmd_name)
+        if not skill:
+            match = self.skills.find_handler(cmd, threshold=0.7)
             if match:
                 skill = match[0]
+
         if skill:
             result = skill.execute(arg or "", {"history": self.history})
             if result.display_raw:
                 yield {"type": "skill", "text": result.content}
             elif result.inject_as_context:
-                for chunk in self.llm.chat_stream(
-                    [{"role": "user", "content": cmd}],
-                    context_injection=result.content,
-                ):
-                    yield chunk
+                if self.is_llm_available:
+                    for chunk in self.llm.chat_stream(
+                        [{"role": "user", "content": cmd}],
+                        context_injection=result.content,
+                    ):
+                        yield chunk
+                else:
+                    yield {"type": "skill", "text": result.content}
             return
 
         # Unknown slash command — not handled, let it flow to LLM

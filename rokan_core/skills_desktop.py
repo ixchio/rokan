@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -100,7 +101,7 @@ class ShellSkill(Skill):
 # ── App Launcher ───────────────────────────────────────────────────
 
 class AppLauncherSkill(Skill):
-    """Open applications by name."""
+    """Open applications by name. Scans .desktop files — knows every app on your system."""
     name = "launch"
     description = "Open desktop applications"
     triggers = [
@@ -110,42 +111,27 @@ class AppLauncherSkill(Skill):
     ]
     priority = 75
 
-    # common app name -> actual command mapping
-    APP_MAP = {
-        "firefox": "firefox",
-        "chrome": "google-chrome",
-        "chromium": "chromium-browser",
+    # Quick aliases for common apps (checked first, before .desktop scan)
+    _QUICK = {
         "terminal": "x-terminal-emulator",
         "files": "xdg-open ~",
         "file manager": "xdg-open ~",
-        "nautilus": "nautilus",
-        "thunar": "thunar",
         "vscode": "code",
         "vs code": "code",
-        "code": "code",
-        "spotify": "spotify",
-        "discord": "discord",
-        "steam": "steam",
-        "gimp": "gimp",
-        "vlc": "vlc",
-        "obs": "obs",
-        "blender": "blender",
-        "calculator": "gnome-calculator",
         "settings": "gnome-control-center",
         "text editor": "xdg-open",
-        "gedit": "gedit",
     }
+
+    def __init__(self):
+        super().__init__()
+        self._desktop_cache: list[dict] | None = None
 
     def can_handle(self, query: str) -> float:
         q = query.lower().strip()
         if q.startswith("/open ") or q.startswith("/launch "):
             return 1.0
         if any(w in q for w in ["open ", "launch ", "start "]):
-            for app in self.APP_MAP:
-                if app in q:
-                    return 0.9
-            # "open <something>" is probably an app launch
-            return 0.7
+            return 0.85
         return super().can_handle(q) * 0.3
 
     def execute(self, query: str, context: dict) -> SkillResult:
@@ -155,37 +141,176 @@ class AppLauncherSkill(Skill):
                 q = q[len(prefix):]
                 break
 
-        # Find matching app
-        cmd = None
         app_name = q.strip()
-        for name, command in self.APP_MAP.items():
-            if name in app_name:
-                cmd = command
-                app_name = name
-                break
+        if not app_name:
+            return SkillResult(content="what do you want to open?", display_raw=True)
 
-        if not cmd:
-            # Try running it directly (maybe it's an actual binary name)
-            cmd = app_name.split()[0]
-            if not shutil.which(cmd):
-                return SkillResult(
-                    content=f"don't know how to open '{app_name}'. try /run <command> directly.",
-                    display_raw=True,
-                )
+        # 1) Quick alias match
+        for alias, cmd in self._QUICK.items():
+            if alias in app_name:
+                return self._launch(cmd, alias)
 
+        # 2) Scan .desktop files for fuzzy match
+        match = self._find_desktop_app(app_name)
+        if match:
+            return self._launch(match["exec"], match["name"])
+
+        # 3) Try as direct binary name
+        binary = app_name.replace(" ", "-")
+        if shutil.which(binary):
+            return self._launch(binary, app_name)
+        # Try without hyphens
+        binary2 = app_name.replace(" ", "")
+        if shutil.which(binary2):
+            return self._launch(binary2, app_name)
+
+        # 4) Nothing found — list similar apps
+        suggestions = self._suggest(app_name)
+        msg = f"can't find '{app_name}'"
+        if suggestions:
+            msg += ". did you mean:\n" + "\n".join(f"  {s}" for s in suggestions[:5])
+        return SkillResult(content=msg, display_raw=True)
+
+    def _launch(self, cmd: str, name: str) -> SkillResult:
         try:
             subprocess.Popen(
                 cmd, shell=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            return SkillResult(
-                content=f"opened {app_name}",
-                inject_as_context=False,
-                display_raw=True,
-            )
+            return SkillResult(content=f"opened {name}", display_raw=True)
         except Exception as e:
-            return SkillResult(content=f"failed to open {app_name}: {e}", display_raw=True)
+            return SkillResult(content=f"failed to open {name}: {e}", display_raw=True)
+
+    def _find_desktop_app(self, query: str) -> dict | None:
+        """Search .desktop files for matching app. Fuzzy matching."""
+        apps = self._scan_desktop_files()
+        q = query.lower()
+        q_words = set(q.split())
+
+        best = None
+        best_score = 0
+
+        for app in apps:
+            name_lower = app["name"].lower()
+            # Exact name match
+            if q == name_lower:
+                return app
+            # Query is substring of name
+            if q in name_lower:
+                score = len(q) / len(name_lower) + 0.5
+                if score > best_score:
+                    best_score = score
+                    best = app
+            # Name is substring of query
+            if name_lower in q:
+                score = len(name_lower) / len(q) + 0.4
+                if score > best_score:
+                    best_score = score
+                    best = app
+            # Word overlap
+            name_words = set(name_lower.split())
+            overlap = q_words & name_words
+            if overlap:
+                score = len(overlap) / max(len(q_words), len(name_words))
+                if score > best_score:
+                    best_score = score
+                    best = app
+            # Check keywords/generic name
+            if q in app.get("generic", "").lower() or q in app.get("keywords", "").lower():
+                if 0.4 > best_score:
+                    best_score = 0.4
+                    best = app
+
+        return best if best_score > 0.3 else None
+
+    def _suggest(self, query: str) -> list[str]:
+        """Find similar app names for suggestions."""
+        apps = self._scan_desktop_files()
+        q = query.lower()
+        scored = []
+        for app in apps:
+            name = app["name"].lower()
+            # Simple: any word overlap or substring
+            if any(w in name for w in q.split()) or any(w in q for w in name.split()):
+                scored.append(app["name"])
+        return scored[:5]
+
+    def _scan_desktop_files(self) -> list[dict]:
+        """Scan all .desktop files and cache results."""
+        if self._desktop_cache is not None:
+            return self._desktop_cache
+
+        apps = []
+        dirs = [
+            Path("/usr/share/applications"),
+            Path("/usr/local/share/applications"),
+            Path.home() / ".local" / "share" / "applications",
+            Path("/var/lib/flatpak/exports/share/applications"),
+            Path.home() / ".local" / "share" / "flatpak" / "exports" / "share" / "applications",
+            Path("/snap") if Path("/snap").exists() else None,
+        ]
+
+        seen = set()
+        for d in dirs:
+            if d is None or not d.exists():
+                continue
+            for f in d.glob("*.desktop"):
+                if f.name in seen:
+                    continue
+                seen.add(f.name)
+                try:
+                    app = self._parse_desktop_file(f)
+                    if app and not app.get("hidden"):
+                        apps.append(app)
+                except Exception:
+                    continue
+
+        self._desktop_cache = apps
+        return apps
+
+    @staticmethod
+    def _parse_desktop_file(path: Path) -> dict | None:
+        """Parse a .desktop file into {name, exec, generic, keywords, hidden}."""
+        data = {"name": "", "exec": "", "generic": "", "keywords": "", "hidden": False}
+        try:
+            in_entry = False
+            for line in path.read_text(errors="replace").splitlines():
+                line = line.strip()
+                if line == "[Desktop Entry]":
+                    in_entry = True
+                    continue
+                if line.startswith("[") and in_entry:
+                    break  # next section
+                if not in_entry or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip()
+                if key == "Name" and not data["name"]:
+                    data["name"] = val
+                elif key == "Exec" and not data["exec"]:
+                    # Clean exec: remove %u, %f, %U, %F etc.
+                    data["exec"] = _RE_DESKTOP_FIELD_CODES.sub("", val).strip()
+                elif key == "GenericName":
+                    data["generic"] = val
+                elif key == "Keywords":
+                    data["keywords"] = val
+                elif key == "NoDisplay" and val.lower() == "true":
+                    data["hidden"] = True
+                elif key == "Hidden" and val.lower() == "true":
+                    data["hidden"] = True
+                elif key == "Type" and val != "Application":
+                    return None
+        except Exception:
+            return None
+
+        if not data["name"] or not data["exec"]:
+            return None
+        return data
+
+
+_RE_DESKTOP_FIELD_CODES = re.compile(r'\s*%[uUfFdDnNickvm]\b')
 
 
 # ── File Operations ────────────────────────────────────────────────
