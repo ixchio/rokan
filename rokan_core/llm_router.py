@@ -6,8 +6,9 @@ Automatic fallback chain. NEVER stores API keys in source.
 
 from __future__ import annotations
 
+import json
 import os
-from typing import Generator, Optional
+from typing import Any, Generator, Optional
 
 from openai import OpenAI
 
@@ -187,3 +188,89 @@ class LLMRouter:
                 "type": "error",
                 "text": f"[LLM ERROR] {type(exc).__name__}: {exc}",
             }
+
+    def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        *,
+        system_prompt: Optional[str] = None,
+        max_rounds: int = 5,
+        tool_executor: Optional[Any] = None,
+    ) -> Generator[dict, None, None]:
+        """
+        Chat with tool-calling support. The LLM can call tools, get results,
+        and call more tools in a loop until it produces a final text response.
+
+        This is what makes Rokan an agent, not a chatbot.
+        Yields: {"type": "content"|"tool_call"|"tool_result"|"error", ...}
+        """
+        from rokan_core.tool_calling import ToolExecutor
+
+        client, cfg = self._get_client("primary")
+        if client is None:
+            for slot in ["fast", "code", "reasoning"]:
+                client, cfg = self._get_client(slot)
+                if client is not None:
+                    break
+        if client is None:
+            yield {"type": "error", "text": "No LLM provider available"}
+            return
+
+        executor = tool_executor or ToolExecutor()
+        sys_prompt = system_prompt or SYSTEM_PROMPT
+        msgs = [{"role": "system", "content": sys_prompt}] + list(messages)
+
+        for round_num in range(max_rounds):
+            try:
+                response = client.chat.completions.create(
+                    model=cfg.model,
+                    messages=msgs,
+                    tools=tools,
+                    tool_choice="auto",
+                    temperature=cfg.temperature,
+                    max_tokens=cfg.max_tokens,
+                )
+            except Exception as e:
+                # Tool calling not supported — fall back to regular streaming
+                yield {"type": "fallback", "text": ""}
+                return
+
+            choice = response.choices[0]
+            msg = choice.message
+
+            # If the model produced tool calls, execute them
+            if msg.tool_calls:
+                # Add assistant message with tool calls
+                msgs.append(msg.model_dump())
+
+                for tc in msg.tool_calls:
+                    fn_name = tc.function.name
+                    try:
+                        fn_args = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        fn_args = {}
+
+                    yield {"type": "tool_call", "text": f"[calling {fn_name}]",
+                           "name": fn_name, "args": fn_args}
+
+                    result = executor.execute(fn_name, fn_args)
+
+                    yield {"type": "tool_result", "text": result[:200],
+                           "name": fn_name, "full_result": result}
+
+                    msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result[:6000],
+                    })
+
+                continue  # Next round — let LLM see the results
+
+            # No tool calls — this is the final text response
+            if msg.content:
+                yield {"type": "content", "text": msg.content}
+            return
+
+        # Hit max rounds
+        yield {"type": "content", "text": "(reached tool call limit)"}

@@ -127,6 +127,16 @@ class RokanAgent:
         except ImportError:
             pass
 
+        # Tool-calling engine (LLM decides what tools to use)
+        self.tool_executor = None
+        self._tool_defs = None
+        try:
+            from rokan_core.tool_calling import ToolExecutor, TOOL_DEFINITIONS
+            self.tool_executor = ToolExecutor(skills_registry=self.skills)
+            self._tool_defs = TOOL_DEFINITIONS
+        except ImportError:
+            pass
+
         # Screen awareness engine
         self.screen = None
         try:
@@ -304,29 +314,102 @@ class RokanAgent:
         # ── Step 4: Assemble context injection ───────────────────
         context_injection = "\n\n".join(context_parts) if context_parts else None
 
-        # ── Step 5: Stream LLM response ──────────────────────────
+        # ── Step 5: Always-on context (git, time, alerts) ────────
+        ambient_parts = []
+        # Current time
+        from datetime import datetime as _dt
+        ambient_parts.append(f"[TIME] {_dt.now().strftime('%A, %B %d, %Y %H:%M')}")
+        # Active window
+        if self.screen:
+            win = self.screen.get_active_window() if hasattr(self.screen, 'get_active_window') else ""
+            if win:
+                ambient_parts.append(f"[ACTIVE WINDOW] {win}")
+        # Pending proactive alerts
+        if self.proactive and self.proactive.pending_alerts:
+            alert_texts = [a.message for a in self.proactive.pending_alerts[:3]]
+            ambient_parts.append(f"[ALERTS] {'; '.join(alert_texts)}")
+
+        if ambient_parts:
+            ambient = "\n".join(ambient_parts)
+            if context_injection:
+                context_injection = ambient + "\n\n" + context_injection
+            else:
+                context_injection = ambient
+
+        # ── Step 6: LLM call (tool-calling first, fallback to stream) ──
         full_response = ""
         full_reasoning = ""
 
-        for chunk in self.llm.chat_stream(
-            self.history,
-            use_reasoning=use_reasoning,
-            use_code=use_code,
-            use_fast=use_fast,
-            context_injection=context_injection,
+        # Try tool-calling mode (agentic) if not explicitly reasoning/code mode
+        if (
+            self.tool_executor
+            and self._tool_defs
+            and not use_reasoning
+            and not use_code
+            and not skill_handled
         ):
-            ctype = chunk["type"]
-            ctext = chunk["text"]
+            # Build messages with context
+            tool_msgs = list(self.history)
+            if context_injection and tool_msgs and tool_msgs[-1]["role"] == "user":
+                original = tool_msgs[-1]["content"]
+                tool_msgs[-1] = {
+                    "role": "user",
+                    "content": f"{context_injection}\n\n---\n{original}",
+                }
 
-            if ctype == "reasoning":
-                full_reasoning += ctext
-            elif ctype == "content":
-                full_response += ctext
-            elif ctype == "error":
+            used_tools = False
+            fell_back = False
+            for chunk in self.llm.chat_with_tools(
+                tool_msgs,
+                self._tool_defs,
+                tool_executor=self.tool_executor,
+            ):
+                ctype = chunk["type"]
+                if ctype == "fallback":
+                    fell_back = True
+                    break
+                if ctype == "tool_call":
+                    used_tools = True
+                    yield {"type": "system", "text": chunk["text"]}
+                elif ctype == "tool_result":
+                    pass  # Don't show raw tool results to user
+                elif ctype == "content":
+                    full_response += chunk["text"]
+                    yield chunk
+                elif ctype == "error":
+                    yield chunk
+                    return
+
+            if not fell_back and (full_response or used_tools):
+                # Tool-calling succeeded — skip to save
+                pass
+            elif fell_back:
+                # Model doesn't support tools — fall through to regular streaming
+                full_response = ""
+            else:
+                pass  # Empty response, fall through
+
+        # Regular streaming fallback (or primary path for reasoning/code modes)
+        if not full_response:
+            for chunk in self.llm.chat_stream(
+                self.history,
+                use_reasoning=use_reasoning,
+                use_code=use_code,
+                use_fast=use_fast,
+                context_injection=context_injection,
+            ):
+                ctype = chunk["type"]
+                ctext = chunk["text"]
+
+                if ctype == "reasoning":
+                    full_reasoning += ctext
+                elif ctype == "content":
+                    full_response += ctext
+                elif ctype == "error":
+                    yield chunk
+                    return
+
                 yield chunk
-                return
-
-            yield chunk
 
         # ── Step 6: Save response ────────────────────────────────
         if full_response:
