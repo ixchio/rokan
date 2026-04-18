@@ -4,8 +4,11 @@ Rokan Voice Engine — Full duplex voice loop.
 Wake word detection → Speech-to-Text → Agent → Text-to-Speech → Listen again.
 This is what makes FRIDAY feel real. Hands-free, always listening.
 
-Dependencies (optional, gracefully degrades):
-  pip install sounddevice numpy openwakeword faster-whisper edge-tts
+Core dependencies (installed by default):
+  sounddevice, numpy, openwakeword, faster-whisper, edge-tts, webrtcvad
+
+System requirements:
+  sudo apt install libportaudio2 portaudio19-dev mpv
 """
 
 from __future__ import annotations

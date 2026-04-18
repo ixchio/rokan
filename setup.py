@@ -41,21 +41,17 @@ setup(
         "flask>=3.0.0",
         # TUI (terminal fallback)
         "textual>=0.85.0",
-        # Voice
+        # Voice — core, not optional
         "edge-tts>=6.1.12",
-        # Search (web search, no API key needed)
+        "sounddevice>=0.4.6",
+        "numpy>=1.24.0",
+        "faster-whisper>=1.0.0",
+        "openwakeword>=0.6.0",
+        "webrtcvad>=2.0.10",
+        # Search — core
         "duckduckgo-search>=6.0.0",
     ],
     extras_require={
-        "voice": [
-            "sounddevice>=0.4.6",
-            "numpy>=1.24.0",
-            "faster-whisper>=1.0.0",
-            "openwakeword>=0.6.0",
-            "webrtcvad>=2.0.10",
-        ],
-        "window": ["pywebview>=5.0"],
-        "search": ["duckduckgo-search>=6.0.0"],
         "research": [
             "tavily-python>=0.5.0",
             "praw>=7.7.0",
@@ -64,13 +60,6 @@ setup(
         "memory-vector": [
             "qdrant-client>=1.12.0",
             "ollama>=0.4.0",
-        ],
-        "all": [
-            "duckduckgo-search>=6.0.0",
-            "sounddevice>=0.4.6",
-            "numpy>=1.24.0",
-            "faster-whisper>=1.0.0",
-            "openwakeword>=0.6.0",
         ],
     },
     entry_points={
