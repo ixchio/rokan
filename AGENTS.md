@@ -2,78 +2,97 @@
 
 ## Architecture (v3.0)
 
-Rokan is a F.R.I.D.A.Y.-class desktop AI assistant. 15 real system-control skills.
-Electron desktop app with monochrome UI + Makima avatar.
+Rokan is a F.R.I.D.A.Y.-class ambient intelligence. 20 skills. Voice loop.
+Screen awareness. Automation engine. Git/calendar/email integration.
+Electron desktop app with floating Makima overlay + monochrome UI.
 
 ### Layer 1: rokan_core/ (the brain)
 - `agent.py` — Central orchestrator. ALL input → `RokanAgent.process()`.
-  Pipeline: skill check (FIRST) → memory recall → search (only if needed) → system info → LLM stream → fact extraction.
-  40-message sliding window prevents context overflow.
-- `config.py` — Pydantic config from YAML + `~/.rokan/.env` auto-loading.
-  `get_api_key()` reads env file on first call (no python-dotenv dep needed).
-- `llm_router.py` — Multi-provider, 4 slots (primary/reasoning/fast/code). All NVIDIA NIM.
-  System prompt lists all 15 capabilities so LLM knows what it can DO.
-- `memory_store.py` — SQLite + FTS5. Three tiers. Full conversation persistence.
-- `skills.py` — Base skill protocol. Built-in: search, system, memory, code.
-- `skills_desktop.py` — FRIDAY skills: shell, launch, files, screenshot, clipboard,
-  reminder, network, media, power, datetime, notify. All work without LLM.
-- `proactive.py` — Background alerts for CPU/RAM/disk/long processes.
+  Pipeline: skill check (FIRST) → screen context → memory → search → system → LLM → fact extraction.
+  40-message sliding window. Voice/screen/automation engines wired in.
+- `config.py` — Pydantic config + `~/.rokan/.env` auto-loading.
+- `llm_router.py` — 4 LLM slots (primary/reasoning/fast/code) via NVIDIA NIM.
+- `memory_store.py` — SQLite + FTS5. Three tiers. Conversation persistence.
+- `skills.py` — Base skill protocol: search, system, memory, code.
+- `skills_desktop.py` — 11 skills: shell, launch, files, screenshot, clipboard,
+  reminder, network, media, power, datetime, notify.
+- `skills_integrations.py` — 5 skills: git, calendar, email, briefing, automate.
+- `voice_engine.py` — Full voice loop: wake word → STT (faster-whisper) → agent → TTS (edge-tts).
+  Push-to-talk via API. All deps optional, graceful degradation.
+- `screen_aware.py` — Background thread: active window, user state detection
+  (coding/browsing/terminal/media/gaming/idle), periodic OCR. Context injected into every LLM call.
+- `automations.py` — Natural language cron + event triggers. SQLite-backed.
+  Supports: daily, weekly, interval, idle, system metric triggers.
+- `proactive.py` — Background CPU/RAM/disk/process alerts.
 
 ### Layer 2: rokan_gui/ (desktop app backend)
-- `server.py` — Flask backend. SSE streaming for chat. REST for status/memory/avatar/history.
-  `/api/history` returns past conversation for UI reload on restart.
-  `/api/voice/speak` runs TTS in background thread (non-blocking).
-- `static/` — Monochrome UI. No emojis, no gradients, no glow. #111/#999/#222.
-  `avatar-default.png` — Makima avatar (119KB). Pulses when AI is streaming.
+- `server.py` — Flask. SSE streaming. REST endpoints for everything:
+  `/api/chat`, `/api/status`, `/api/avatar`, `/api/history`,
+  `/api/screen`, `/api/voice/*`, `/api/automations`, `/api/remember`, `/api/recall`.
+- `static/` — Monochrome UI (#111/#999/#222). Makima avatar with pulse animation.
 
 ### Layer 3: electron/ (native app)
-- `main.js` — Spawns Python backend, loads `.env`, creates venv, BrowserWindow.
-  backgroundColor #111 to match theme. Tray icon support.
+- `main.js` — Python backend spawner + main window + floating overlay widget.
+  Overlay: 64px avatar circle, always-on-top, bottom-right, transparent, draggable.
+  Click opens main window. Tray icon support.
 
-### Layer 4: rokan_cli/ + rokan_tui/ (alternative interfaces)
+### Layer 4: rokan_cli/ + rokan_tui/
 - CLI via Click, TUI via Textual. Both use RokanAgent.
 
-## Skill Routing Logic (IMPORTANT)
-1. Slash commands (`/run`, `/open`, etc.) → `_handle_slash()` → exact name lookup, then `find_handler()`
-2. Natural language → `find_handler(threshold=0.5)` → skills with smart `can_handle()` checked FIRST
-3. Only if no skill handled it → `_needs_search()` (conservative: won't trigger on "what is linux")
-4. Only if query mentions system words → system stats injected
-5. If skill returns `inject_as_context` but LLM is down → falls back to `display_raw`
-6. Memory context always injected regardless
+## 20 Skills
+| Skill | Type | What it does |
+|-------|------|-------------|
+| shell | display_raw | Run terminal commands |
+| launch | display_raw | Open apps by name |
+| git | both | Git status/log/diff/branch/commit |
+| datetime | inject | Current time/date |
+| briefing | inject | Morning briefing (weather+system+calendar+email+git) |
+| system | inject | CPU/RAM/disk stats |
+| reminder | display_raw | Timers with desktop notifications |
+| calendar | inject | Google Calendar or calcurse |
+| automate | display_raw | Create/list/manage automations |
+| memory | display_raw | Store/recall facts |
+| files | inject | Find files, disk usage |
+| email | inject | IMAP inbox check |
+| search | inject | DuckDuckGo web search |
+| screenshot | inject | Screen capture + OCR |
+| clipboard | both | Read/write clipboard |
+| network | inject | IP, ping, connectivity |
+| media | display_raw | Volume/brightness/playback |
+| code | display_raw | Python sandbox |
+| notify | display_raw | Desktop notifications |
+| power | display_raw | Lock/sleep/shutdown |
 
-## Known Patterns & Gotchas
-- `can_handle()` base implementation divides by total triggers — scores are low. Every important skill
-  needs a custom `can_handle()` with phrase-level matching returning 0.7-0.9.
-- `display_raw=True` → shown directly to user. `inject_as_context=True` → sent to LLM.
-  Shell/launch/remind/notify use display_raw. Files/network/datetime use inject_as_context.
-- `_needs_search()` was rewritten to be conservative. Only triggers on explicit "search for",
-  "latest news", "weather", "stock price" etc. Old version triggered on "what is" and "today".
-- `.env` loading: config.py reads `~/.rokan/.env` once, doesn't override existing env vars.
-  Electron also loads the same file and passes as subprocess env. Both paths work.
-- History: 40-msg sliding window in memory, full history persisted in SQLite. UI loads
-  last 20 messages on boot via `/api/history`.
+## Routing Logic
+1. Slash commands → `_handle_slash()` → exact name, then `find_handler(threshold=0.8)`
+2. Natural language → `find_handler(threshold=0.5)` → skills checked FIRST
+3. Screen context injected always (if running)
+4. Search only on explicit triggers ("search for", "latest news", "weather")
+5. If skill returns `inject_as_context` but LLM down → fallback to `display_raw`
 
-## Build & Run
+## Key Patterns
+- Every important skill needs custom `can_handle()` with phrase matching (base is too weak)
+- `display_raw=True` → shown directly. `inject_as_context=True` → through LLM
+- Voice engine doesn't auto-start mic — requires explicit user consent
+- Automations stored in `~/.rokan/automations.db` — separate from memory.db
+- `.env` loading: config.py reads `~/.rokan/.env` once, doesn't override existing env vars
+
+## Setup
 ```bash
-pip install -e .
-# Set key in ~/.rokan/.env OR export directly:
+pip install -e .                    # Core
+pip install -e ".[voice]"           # + voice (sounddevice, faster-whisper, openwakeword)
 echo "NVIDIA_API_KEY=nvapi-..." > ~/.rokan/.env
-rokan                    # TUI
-python -m rokan_gui.server  # GUI backend (http://127.0.0.1:18991)
+
+# Optional email:
+echo "IMAP_SERVER=imap.gmail.com" >> ~/.rokan/.env
+echo "IMAP_USER=you@gmail.com" >> ~/.rokan/.env
+echo "IMAP_PASSWORD=app-password" >> ~/.rokan/.env
+
+# Optional tools (for full screen awareness):
+sudo apt install xdotool xprintidle tesseract-ocr scrot
 ```
 
 ## API Keys
-- **NVIDIA_API_KEY** — Required. Powers all 4 LLM slots via NVIDIA NIM.
-- **TAVILY_API_KEY** — Optional. Only if switching search from DuckDuckGo to Tavily.
-- No other keys needed. All 15 skills work locally with zero API keys.
-
-## Testing
-```bash
-python -c "
-from rokan_core.agent import RokanAgent
-a = RokanAgent()
-print(len(a.skills.list_skills()), 'skills')
-r = list(a.process('/run echo test'))
-print(r[0])
-"
-```
+- **NVIDIA_API_KEY** — Required for LLM. All 20 skills work without it.
+- **IMAP_SERVER/USER/PASSWORD** — Optional, for email skill.
+- No other keys needed.
