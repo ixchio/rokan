@@ -122,6 +122,19 @@ class AppLauncherSkill(Skill):
         "text editor": "xdg-open",
     }
 
+    # App-specific flags/modifiers
+    _APP_FLAGS = {
+        "firefox":         {"new tab": "--new-tab", "private": "--private-window", "incognito": "--private-window"},
+        "google-chrome":   {"new tab": "--new-window", "private": "--incognito", "incognito": "--incognito"},
+        "chromium":        {"new tab": "--new-window", "private": "--incognito", "incognito": "--incognito"},
+        "brave-browser":   {"new tab": "--new-window", "private": "--incognito", "incognito": "--incognito"},
+        "brave":           {"new tab": "--new-window", "private": "--incognito", "incognito": "--incognito"},
+    }
+
+    # Words that are modifiers, not part of the app name
+    _MODIFIERS = ["new tab", "new window", "private", "incognito", "private window",
+                  "in private", "private mode", "fullscreen", "maximized"]
+
     def __init__(self):
         super().__init__()
         self._desktop_cache: list[dict] | None = None
@@ -130,20 +143,36 @@ class AppLauncherSkill(Skill):
         q = query.lower().strip()
         if q.startswith("/open ") or q.startswith("/launch "):
             return 1.0
-        if any(w in q for w in ["open ", "launch ", "start "]):
+        if any(w in q for w in ["open ", "launch ", "start ", "go to ", "browse "]):
             return 0.85
+        # URL detection
+        if re.search(r'https?://|www\.|\.\w{2,4}/', q):
+            return 0.8
         return super().can_handle(q) * 0.3
 
     def execute(self, query: str, context: dict) -> SkillResult:
         q = query.lower().strip()
-        for prefix in ("/open ", "/launch ", "open ", "launch ", "start "):
+        for prefix in ("/open ", "/launch ", "open ", "launch ", "start ", "go to ", "browse "):
             if q.startswith(prefix):
                 q = q[len(prefix):]
                 break
 
-        app_name = q.strip()
-        if not app_name:
+        raw_input = q.strip()
+        if not raw_input:
             return SkillResult(content="what do you want to open?", display_raw=True)
+
+        # Extract URL if present
+        url_match = re.search(r'(https?://\S+|www\.\S+)', raw_input)
+        url = url_match.group(1) if url_match else None
+        if url and not url.startswith("http"):
+            url = "https://" + url
+
+        # Separate app name from modifiers
+        app_name, modifiers = self._parse_modifiers(raw_input)
+
+        # If it's just a URL with no app specified, open with default browser
+        if url and not app_name:
+            return self._launch(f"xdg-open {url}", url)
 
         # 1) Quick alias match
         for alias, cmd in self._QUICK.items():
@@ -153,23 +182,59 @@ class AppLauncherSkill(Skill):
         # 2) Scan .desktop files for fuzzy match
         match = self._find_desktop_app(app_name)
         if match:
-            return self._launch(match["exec"], match["name"])
+            cmd = match["exec"]
+            cmd = self._apply_flags(cmd, match["name"], modifiers, url)
+            return self._launch(cmd, match["name"])
 
         # 3) Try as direct binary name
-        binary = app_name.replace(" ", "-")
-        if shutil.which(binary):
-            return self._launch(binary, app_name)
-        # Try without hyphens
-        binary2 = app_name.replace(" ", "")
-        if shutil.which(binary2):
-            return self._launch(binary2, app_name)
+        for binary in [app_name.replace(" ", "-"), app_name.replace(" ", ""), app_name.split()[0]]:
+            if shutil.which(binary):
+                cmd = self._apply_flags(binary, binary, modifiers, url)
+                return self._launch(cmd, app_name)
 
-        # 4) Nothing found — list similar apps
+        # 4) If there's a URL, just open it with xdg-open
+        if url:
+            return self._launch(f"xdg-open {url}", url)
+
+        # 5) Nothing found — suggest similar apps
         suggestions = self._suggest(app_name)
         msg = f"can't find '{app_name}'"
         if suggestions:
             msg += ". did you mean:\n" + "\n".join(f"  {s}" for s in suggestions[:5])
         return SkillResult(content=msg, display_raw=True)
+
+    def _parse_modifiers(self, raw: str) -> tuple[str, list[str]]:
+        """Separate 'firefox new tab' into ('firefox', ['new tab'])."""
+        found = []
+        cleaned = raw
+        for mod in sorted(self._MODIFIERS, key=len, reverse=True):
+            if mod in cleaned:
+                found.append(mod)
+                cleaned = cleaned.replace(mod, "").strip()
+        # Remove stray "in", "a", "with" left over
+        cleaned = re.sub(r'\b(in|a|an|the|with|and|my)\b', '', cleaned).strip()
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        # Also remove URL from app name
+        cleaned = re.sub(r'https?://\S+|www\.\S+', '', cleaned).strip()
+        return cleaned, found
+
+    def _apply_flags(self, cmd: str, app_name: str, modifiers: list[str], url: str | None) -> str:
+        """Apply modifiers like 'new tab', 'private' as CLI flags."""
+        # Find which app family this belongs to
+        app_lower = app_name.lower()
+        cmd_base = cmd.split()[0] if cmd else ""
+
+        for app_key, flags in self._APP_FLAGS.items():
+            if app_key in app_lower or app_key in cmd_base:
+                for mod in modifiers:
+                    if mod in flags:
+                        cmd += f" {flags[mod]}"
+                break
+
+        if url:
+            cmd += f" {url}"
+
+        return cmd
 
     def _launch(self, cmd: str, name: str) -> SkillResult:
         try:

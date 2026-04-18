@@ -57,14 +57,31 @@ def _needs_search(query: str) -> bool:
 
 
 def _needs_system(query: str) -> bool:
-    """Detect if query is about the local system."""
+    """Detect if query needs local system context. Broad — FRIDAY always knows the machine."""
     q = query.lower()
-    sys_words = {
-        "system", "cpu", "ram", "memory", "disk", "process",
-        "status", "resource", "slow", "running", "my computer",
-        "my machine", "performance",
-    }
-    return any(w in q for w in sys_words)
+    # Explicit system queries
+    if any(w in q for w in [
+        "system", "cpu", "ram", "memory", "disk", "process", "status",
+        "resource", "slow", "running", "my computer", "my machine",
+        "performance", "battery", "temperature", "gpu", "network",
+        "port", "service", "kernel", "uptime", "usb",
+        "what's eating", "what's using", "what's running",
+        "kill", "top", "htop", "connection",
+    ]):
+        return True
+    # Casual awareness queries — user expects Rokan to know what's happening
+    # Normalize contractions for matching
+    qn = q.replace("'s ", " is ").replace("'re ", " are ")
+    if any(p in q or p in qn for p in [
+        "what's going on", "what is going on", "what's happening", "what is happening",
+        "what's up", "what is up", "how's it going", "how is it going",
+        "how are things", "how's my", "how is my",
+        "anything happening", "anything wrong", "any issues",
+        "everything ok", "everything good", "all good",
+        "check on", "how's the", "going on",
+    ]):
+        return True
+    return False
 
 
 # ── Agent Core ───────────────────────────────────────────────────────
