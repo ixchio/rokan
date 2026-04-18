@@ -1,232 +1,223 @@
-# Rokan for OpenClaw
+# Rokan
 
-**The Player. Linux-first. No cloud leaks.**
-
-Sung Jin-Woo edition AI assistant — built as an OpenClaw skill pack. Zero reinventing the wheel, maximum execution.
+**Ambient Intelligence for your machine. F.R.I.D.A.Y.-class desktop assistant.**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Linux-black.svg)
-![OpenClaw](https://img.shields.io/badge/OpenClaw-Skill%20Pack-green.svg)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-black.svg)
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 
 ## What is Rokan?
 
-Rokan is a **personality + skill pack** for [OpenClaw](https://github.com/OpenClaw) — the 310k-star open-source AI assistant framework. Instead of building from scratch, you get:
+Rokan is a desktop AI assistant that actually *knows* your machine. Not a chatbot — an ambient intelligence that:
 
-- ✅ OpenClaw runtime (proactive, multi-channel, autonomous)
-- ✅ Rokan personality (Sung Jin-Woo vibes — silent, precise, deadly)
-- ✅ 7 specialized skills (memory, voice, research, jobs, system, code, vcr)
-- ✅ 100% free stack (Ollama, Qdrant, Whisper.cpp, Piper)
+- 🧠 **Remembers everything** — persistent SQLite memory across sessions
+- 🔍 **Searches when needed** — auto-detects when your question needs live data
+- 🖥️ **Monitors your system** — proactive alerts for CPU, RAM, disk
+- ⚡ **Routes to the right model** — primary, reasoning, fast, and code models
+- 🗣️ **Speaks responses** — neural voice synthesis (edge-tts)
+- 🔌 **Pluggable skills** — search, system, memory, code execution, and more
 
-## The Moat: rokan-vcr
-
-**Time-travel debugging for AI agents.**
-
-- Record every execution step
-- Replay from any checkpoint (zero tokens)
-- Golden Run Cache: same query = instant response
-- Compare runs, debug failures, optimize workflows
-
-No other OpenClaw fork has this.
-
-## Skill Pack
-
-| Skill | Description | Stack |
-|-------|-------------|-------|
-| `rokan-memory` | 3-tier memory (episodic, semantic, procedural) | Qdrant + mxbai-embed-large |
-| `rokan-voice` | Local voice pipeline | openWakeWord + Whisper.cpp + Piper |
-| `rokan-research` | Deep research + social scraping | Tavily + Crawl4AI + Reddit + Twitter |
-| `rokan-jobs` | Real-time job monitoring | Reddit + Twitter + matching algo |
-| `rokan-system` | Linux system control | psutil + dbus |
-| `rokan-code` | Sandboxed Python execution | restrictedpython + docker |
-| `rokan-vcr` | Time-travel debugger | agent-vcr integration |
+Built for developers who want a real assistant, not a wrapper around an API call.
 
 ## Quick Install
 
 ```bash
-# 1. Install OpenClaw (needs Node 22+)
-npm install -g openclaw@latest
-openclaw onboard --install-daemon
+# Clone
+git clone https://github.com/ixchio/rokan.git
+cd rokan
 
-# 2. Clone Rokan skills
-git clone https://github.com/yourusername/rokan-skills.git
-cd rokan-skills
+# Install (works on Linux and Windows)
+pip install -e .
 
-# 3. Install
-chmod +x install.sh
-./install.sh
+# Set your API key (free at https://build.nvidia.com)
+export NVIDIA_API_KEY="nvapi-..."   # Linux/Mac
+# or: set NVIDIA_API_KEY=nvapi-...  # Windows
 
-# 4. Start
-openclaw start
+# Launch
+rokan
 ```
+
+That's it. No Docker. No external databases. No Node.js. Just Python.
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     User Interface                       │
+│              TUI (terminal)  ·  CLI  ·  Voice            │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │  AGENT CORE │  ← The brain
+                    │             │
+                    │  • Intent detection
+                    │  • Skill routing
+                    │  • Memory recall
+                    │  • Context assembly
+                    │  • Fact extraction
+                    └──────┬──────┘
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+    ┌─────▼─────┐   ┌─────▼─────┐   ┌─────▼─────┐
+    │  LLM      │   │  Skills   │   │  Memory   │
+    │  Router   │   │  Registry │   │  Store    │
+    │           │   │           │   │           │
+    │ NVIDIA NIM│   │ /search   │   │ SQLite    │
+    │ Ollama    │   │ /system   │   │ FTS5      │
+    │ Groq      │   │ /memory   │   │ (zero     │
+    │ OpenAI    │   │ /code     │   │  setup)   │
+    └───────────┘   └───────────┘   └───────────┘
+```
+
+Every query flows through the Agent Core:
+1. **Memory recall** — pull relevant memories and user facts
+2. **Intent detection** — does this need web search? system info?
+3. **Skill routing** — find the right skill to handle it
+4. **Context assembly** — combine memory + search + system data
+5. **LLM streaming** — send rich context to the model
+6. **Fact extraction** — learn preferences from the conversation
+
+## Usage
+
+### TUI (default)
+```bash
+rokan           # Launch the terminal UI
+```
+
+The TUI features:
+- Real-time system monitoring sidebar
+- Streaming LLM responses
+- Proactive alerts (CPU spikes, disk full, etc.)
+- Voice output
+- Slash commands for skills
+
+### CLI
+```bash
+rokan ask "What's happening with AI today?"     # Auto-searches the web
+rokan ask --think "Analyze this architecture"    # Uses reasoning model
+rokan ask --code "Write a Python async server"   # Uses code model
+rokan ask --fast "Quick: what's a mutex?"        # Uses fast model
+
+rokan status                    # System + LLM + memory report
+rokan remember "I use neovim"   # Store a fact
+rokan recall "editor"           # Search memories
+rokan memory                    # Memory statistics
+rokan skills                    # List active skills
+rokan system                    # System metrics
+```
+
+### Slash Commands (in TUI)
+| Command | Effect |
+|---------|--------|
+| `/think <query>` | Use reasoning model (deep analysis) |
+| `/fast <query>` | Use fast model (quick answers) |
+| `/search <query>` | Force web search |
+| `/system` | Show system status |
+| `/memory` | Show memory stats |
+| `/remember <fact>` | Store a fact |
+| `/recall <query>` | Search memories |
+| `/code <python>` | Execute code |
+| `/skills` | List active skills |
+| `/voice` | Toggle voice output |
+| `/clear` | Clear chat |
+
+## Model Stack (NVIDIA NIM — Free Tier)
+
+| Slot | Model | Best For |
+|------|-------|----------|
+| PRIMARY | meta/llama-3.3-70b-instruct | General queries |
+| REASONING | z-ai/glm4.7 | Deep analysis, complex problems |
+| FAST | stepfun-ai/step-3.5-flash | Quick answers, low latency |
+| CODE | qwen/qwq-32b | Code generation, debugging |
+
+Get a free API key at [build.nvidia.com](https://build.nvidia.com).
 
 ## Configuration
 
-Edit `~/.openclaw/config.yaml`:
+Edit `config.yaml` in the repo root (or `~/.rokan/config.yaml`):
 
 ```yaml
 persona:
   name: "Rokan"
-  tagline: "The Player. Linux-first. No cloud leaks."
-  
+
 llm:
   primary:
-    provider: "ollama"
-    model: "deepseek-r2:7b"
-  fallbacks:
-    - provider: "groq"
-      model: "llama-3.3-70b-versatile"
+    provider: "nvidia-nim"
+    model: "meta/llama-3.3-70b-instruct"
 
-skills:
-  workspace: "~/.openclaw/skills/rokan"
-  priority: "workspace"
+memory:
+  backend: "sqlite"  # zero setup, cross-platform
+
+system:
+  enabled: true
+  thresholds:
+    cpu_percent: 80
+    memory_percent: 85
+    disk_percent: 90
 ```
 
-## Usage
+## Skills
 
-### Chat
-```bash
-openclaw chat "What's my system status?"
-```
+Rokan comes with 4 built-in skills, plus 7 expansion modules:
 
-### Voice Mode
-```bash
-# Wake word: "Hey Rokan"
-openclaw voice enable
-```
+### Built-in (always active)
+| Skill | What it does |
+|-------|-------------|
+| **search** | Auto-searches web when query needs live data |
+| **system** | CPU/RAM/disk monitoring, process list |
+| **memory** | Remember facts, recall context, track conversations |
+| **code** | Sandboxed Python execution |
 
-### Job Monitoring
-```bash
-# Start background monitoring
-openclaw skill rokan-jobs start_monitoring
+### Expansion Modules (in repo, wire-able)
+| Module | Description |
+|--------|-------------|
+| `rokan-research/` | Tavily + Reddit + Twitter deep research |
+| `rokan-jobs/` | Job monitoring with skill matching |
+| `rokan-voice/` | Full local voice pipeline (Whisper + Piper) |
+| `rokan-vcr/` | Execution recording and replay |
 
-# Instant search
-openclaw skill rokan-jobs search "remote AI engineer"
-```
+## Cross-Platform
 
-### Research
-```bash
-# Deep research
-openclaw skill rokan-research "Latest Linux kernel features"
+| Feature | Linux | Windows |
+|---------|-------|---------|
+| TUI | ✓ | ✓ |
+| CLI | ✓ | ✓ |
+| LLM (NVIDIA NIM) | ✓ | ✓ |
+| Memory (SQLite) | ✓ | ✓ |
+| System monitoring | ✓ | ✓ |
+| Voice (edge-tts) | ✓ | ✓ |
+| Web search | ✓ | ✓ |
 
-# Reddit scan
-openclaw skill rokan-research reddit r/linux "Wayland sentiment"
+## API Keys
 
-# Twitter tracking
-openclaw skill rokan-research twitter "hiring AI engineer"
-```
-
-### VCR Replay
-```bash
-# List recordings
-openclaw skill rokan-vcr list
-
-# Replay execution
-openclaw skill rokan-vcr replay rec_abc123
-
-# Compare runs
-openclaw skill rokan-vcr diff rec_abc123 rec_def456
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    OpenClaw Runtime                      │
-│         (Multi-channel, Proactive, Autonomous)          │
-└─────────────────────────────────────────────────────────┘
-                           │
-        ┌──────────────────┼──────────────────┐
-        │                  │                  │
-   ┌────▼────┐       ┌────▼────┐       ┌────▼────┐
-   │ Rokan   │       │ Skills  │       │ Memory  │
-   │ Persona │       │ System  │       │ Layer   │
-   └────┬────┘       └────┬────┘       └────┬────┘
-        │                  │                  │
-        └──────────────────┼──────────────────┘
-                           │
-    ┌──────────────────────┼──────────────────────┐
-    │                      │                      │
-┌───▼───┐  ┌──────────┐  ┌─▼────┐  ┌────────┐  ┌▼──────┐
-│rokan- │  │ rokan-   │  │rokan-│  │rokan-  │  │rokan- │
-│memory │  │ voice    │  │research│ │jobs    │  │vcr    │
-└───────┘  └──────────┘  └──────┘  └────────┘  └───────┘
-```
-
-## Stack (All Free)
-
-| Component | Tool | Cost |
-|-----------|------|------|
-| LLM | Ollama (deepseek-r2:7b) | Free |
-| Embeddings | mxbai-embed-large | Free |
-| Vector DB | Qdrant (local) | Free |
-| Search | Tavily (free tier) + SearXNG | Free |
-| STT | Whisper.cpp | Free |
-| TTS | Piper | Free |
-| Wake Word | openWakeWord | Free |
-
-## API Keys (Optional)
-
-Local Ollama works without any API keys. For fallbacks:
+Only one is needed. Everything else is optional.
 
 ```bash
-# Groq (free tier: 1M tokens/day)
-export GROQ_API_KEY="gsk_..."
-
-# Tavily (free tier: 1000 searches/month)
-export TAVILY_API_KEY="tvly-..."
-
-# Reddit (free)
-export REDDIT_CLIENT_ID="..."
-export REDDIT_CLIENT_SECRET="..."
-
-# Twitter (free tier: 500 posts/month)
-export TWITTER_BEARER_TOKEN="..."
+# Required — NVIDIA NIM (free tier)
+export NVIDIA_API_KEY="nvapi-..."
 ```
-
-## Why OpenClaw + Rokan?
-
-| Approach | Effort | Features | Maintenance |
-|----------|--------|----------|-------------|
-| Build from scratch | 6 months | Basic | Full-time |
-| OpenClaw fork | 2 weeks | Full | Minimal |
-| **OpenClaw + Rokan** | **1 day** | **Elite** | **Skill updates** |
-
-## The Sung Jin-Woo Philosophy
-
-> "I don't ask unnecessary questions. I execute."
-
-Rokan is designed for developers who:
-- Want a Linux-native AI assistant
-- Refuse cloud lock-in
-- Value privacy and local execution
-- Need proactive system monitoring
-- Want job opportunities delivered to them
 
 ## Contributing
 
 1. Fork the repo
-2. Create a skill: `mkdir rokan-yourskill && touch SKILL.md`
-3. Follow the [OpenClaw skill spec](https://docs.openclaw.dev/skills)
+2. Create a skill in `rokan_core/skills.py` (subclass `Skill`)
+3. Register it in `agent.py`
 4. Submit PR
 
 ## Roadmap
 
-- [ ] IronClaw compatibility (hardened mode)
-- [ ] GPU acceleration for voice
-- [ ] More job sources (LinkedIn, AngelList)
-- [ ] Screen awareness (scrot + vision model)
-- [ ] Plugin marketplace
+- [ ] Ollama local model support (no internet needed)
+- [ ] Groq fallback provider
+- [ ] Screen awareness (screenshot + vision model)
+- [ ] Calendar integration
+- [ ] Custom wake word (local STT)
+- [ ] Plugin system for third-party skills
 
 ## License
 
 MIT — Use it, fork it, make it yours.
 
-## Credits
-
-- OpenClaw team for the incredible runtime
-- Sung Jin-Woo for the inspiration
-- The Linux community for keeping it open
-
 ---
 
-**Rokan** — *Arise.*
+**Rokan** — *The System is online.*
