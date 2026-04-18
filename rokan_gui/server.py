@@ -177,3 +177,8 @@ def start_server_thread(port: int = 18991) -> threading.Thread:
         except Exception:
             time.sleep(0.2)
     return t
+
+
+# Allow running as: python -m rokan_gui.server
+if __name__ == "__main__":
+    run_server()

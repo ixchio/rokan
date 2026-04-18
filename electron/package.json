@@ -1,0 +1,88 @@
+{
+  "name": "rokan",
+  "version": "2.0.0",
+  "description": "Rokan — F.R.I.D.A.Y.-class ambient intelligence for your machine",
+  "main": "main.js",
+  "author": "ixchio <amankumarpandeyin@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/ixchio/rokan",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --linux deb",
+    "dist:all": "electron-builder --linux deb AppImage"
+  },
+  "build": {
+    "appId": "dev.rokan.app",
+    "productName": "Rokan",
+    "linux": {
+      "target": [
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
+      "category": "Utility",
+      "icon": "build/icons",
+      "desktop": {
+        "entry": {
+          "Name": "Rokan",
+          "GenericName": "AI Assistant",
+          "Comment": "F.R.I.D.A.Y.-class ambient intelligence",
+          "Keywords": "AI;Assistant;LLM;System;Monitor;",
+          "StartupWMClass": "rokan"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "python3 (>= 3.10)",
+        "python3-venv",
+        "python3-pip",
+        "mpv"
+      ],
+      "afterInstall": "build/afterInstall.sh",
+      "afterRemove": "build/afterRemove.sh"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "python/**/*",
+      "build/icon.svg"
+    ],
+    "extraResources": [
+      {
+        "from": "../rokan_core",
+        "to": "python/rokan_core"
+      },
+      {
+        "from": "../rokan_tui",
+        "to": "python/rokan_tui"
+      },
+      {
+        "from": "../rokan_gui",
+        "to": "python/rokan_gui"
+      },
+      {
+        "from": "../rokan_cli",
+        "to": "python/rokan_cli"
+      },
+      {
+        "from": "../setup.py",
+        "to": "python/setup.py"
+      },
+      {
+        "from": "../config.yaml",
+        "to": "python/config.yaml"
+      },
+      {
+        "from": "../requirements.txt",
+        "to": "python/requirements.txt"
+      }
+    ]
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}

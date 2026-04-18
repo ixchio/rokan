@@ -2,3 +2,9 @@ rokan.egg-info/
 __pycache__/
 *.pyc
 *.db
+.rokan/
+
+# Electron
+electron/node_modules/
+electron/dist/
+electron/renderer/
