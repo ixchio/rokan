@@ -31,28 +31,27 @@ from rokan_core.skills import (
 
 # ── Search Need Detection ────────────────────────────────────────────
 
-_SEARCH_TRIGGERS = {
-    "what is", "who is", "where is", "when is", "how to",
-    "latest", "today", "current", "news", "recent",
-    "weather", "stock", "price", "score",
+_SEARCH_MUST = {
     "search for", "look up", "find out", "google",
-    "what happened", "tell me about",
+    "search ", "/search",
 }
 
-_TIME_WORDS = {"today", "now", "latest", "current", "recent", "this week", "this month"}
+_SEARCH_LIKELY = {
+    "latest news", "today's news", "current price", "stock price",
+    "weather in", "weather today", "what happened today",
+    "score of", "who won", "election results",
+    "release date", "when does", "is it true",
+}
 
 
 def _needs_search(query: str) -> bool:
-    """Detect if a query needs live web data."""
+    """Detect if a query genuinely needs live web data. Conservative."""
     q = query.lower()
     # Explicit search request
-    if q.startswith("/search ") or q.startswith("search "):
+    if any(t in q for t in _SEARCH_MUST):
         return True
-    # Time-sensitive
-    if any(w in q for w in _TIME_WORDS):
-        return True
-    # Question about factual/current info
-    if any(q.startswith(t) or f" {t} " in f" {q} " for t in _SEARCH_TRIGGERS):
+    # Likely needs live data
+    if any(t in q for t in _SEARCH_LIKELY):
         return True
     return False
 
@@ -150,6 +149,10 @@ class RokanAgent:
         self.history.append({"role": "user", "content": user_input})
         self.memory.save_message(self.session_id, "user", user_input)
 
+        # Sliding window — keep last 40 messages to avoid context overflow
+        if len(self.history) > 40:
+            self.history = self.history[-40:]
+
         # ── Step 2: Slash commands (direct skill invocation) ─────
         if user_input.startswith("/"):
             slash_result = self._handle_slash(user_input)
@@ -157,21 +160,47 @@ class RokanAgent:
                 yield from slash_result
                 return
 
-        # ── Step 3: Build context ────────────────────────────────
+        # ── Step 3: Check skills FIRST (before search/system) ────
+        # If a skill can handle this directly, don't waste time searching
         context_parts = []
+        skill_handled = False
+
+        skill_match = self.skills.find_handler(user_input, threshold=0.5)
+        if skill_match:
+            skill, confidence = skill_match
+            if skill.name not in ("search", "system"):
+                result = skill.execute(user_input, {"history": self.history})
+                if result.display_raw:
+                    yield {"type": "skill", "text": result.content}
+                    self.memory.save_message(self.session_id, "assistant", result.content)
+                    return
+                if result.inject_as_context:
+                    # If LLM is down, show raw skill output instead of failing
+                    if not self.is_llm_available:
+                        yield {"type": "skill", "text": result.content}
+                        self.memory.save_message(self.session_id, "assistant", result.content)
+                        return
+                    context_parts.append(result.content)
+                    skill_handled = True
+
+        # ── Step 4: Build context (search/system/memory) ─────────
 
         # Memory context
         mem_context = self.memory.build_context(user_input, self.session_id)
         if mem_context:
             context_parts.append(mem_context)
 
-        # Auto-search if needed
-        if self.config.search.auto_search and _needs_search(user_input):
-            yield {"type": "system", "text": "[searching the web...]"}
+        # Auto-search — only if no skill already handled it
+        if (
+            not skill_handled
+            and self.config.search.auto_search
+            and _needs_search(user_input)
+        ):
+            yield {"type": "system", "text": "[searching...]"}
             search_handler = self.skills.get("search")
             if search_handler:
                 result = search_handler.execute(user_input, {})
-                if result.content and "ERROR" not in result.content:
+                if result.content and "ERROR" not in result.content and "not installed" not in result.content:
                     context_parts.append(result.content)
 
         # Auto system info if query is about the machine
@@ -180,20 +209,6 @@ class RokanAgent:
             if sys_handler:
                 result = sys_handler.execute(user_input, {})
                 if result.content:
-                    context_parts.append(result.content)
-
-        # Check if any other skill wants to handle this
-        skill_match = self.skills.find_handler(user_input, threshold=0.6)
-        if skill_match:
-            skill, confidence = skill_match
-            # Don't double-invoke search/system (already handled above)
-            if skill.name not in ("search", "system"):
-                result = skill.execute(user_input, {"history": self.history})
-                if result.display_raw:
-                    yield {"type": "skill", "text": result.content}
-                    self.memory.save_message(self.session_id, "assistant", result.content)
-                    return
-                if result.inject_as_context:
                     context_parts.append(result.content)
 
         # ── Step 4: Assemble context injection ───────────────────
@@ -308,13 +323,18 @@ class RokanAgent:
         # Generic slash routing — /run, /open, /find, /remind, /ping, etc.
         cmd_name = command[1:]  # strip leading /
         skill = self.skills.get(cmd_name)
+        # If no exact name match, find by can_handle (e.g. /run → shell skill)
+        if not skill:
+            match = self.skills.find_handler(cmd, threshold=0.8)
+            if match:
+                skill = match[0]
         if skill:
             result = skill.execute(arg or "", {"history": self.history})
             if result.display_raw:
                 yield {"type": "skill", "text": result.content}
             elif result.inject_as_context:
                 for chunk in self.llm.chat_stream(
-                    [{"role": "user", "content": user_input}],
+                    [{"role": "user", "content": cmd}],
                     context_injection=result.content,
                 ):
                     yield chunk

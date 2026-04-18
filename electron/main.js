@@ -209,7 +209,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Rokan',
-    backgroundColor: '#08080f',
+    backgroundColor: '#111111',
     icon: getIcon(),
     autoHideMenuBar: true,
     webPreferences: {
@@ -292,10 +292,10 @@ app.whenReady().then(async () => {
     // Show error window
     createWindow();
     mainWindow.loadURL(`data:text/html,
-      <body style="background:#08080f;color:#f87171;font-family:monospace;padding:40px">
-        <h2>Rokan — Backend Failed</h2>
+      <body style="background:#111;color:#a55;font-family:monospace;padding:40px">
+        <h2>rokan — backend failed</h2>
         <p>${e.message}</p>
-        <p style="color:#5a6080">Check that Python 3.10+ is installed and NVIDIA_API_KEY is set in ~/.rokan/.env</p>
+        <p style="color:#555">check that python 3.10+ is installed and NVIDIA_API_KEY is set in ~/.rokan/.env</p>
       </body>
     `);
     return;

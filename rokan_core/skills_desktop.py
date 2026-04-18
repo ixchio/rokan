@@ -40,13 +40,16 @@ class ShellSkill(Skill):
         q = query.lower().strip()
         if q.startswith("/run ") or q.startswith("/shell ") or q.startswith("/exec "):
             return 1.0
+        # "run <something>" is almost certainly a shell request
+        if q.startswith("run ") or q.startswith("execute "):
+            return 0.9
         return super().can_handle(q)
 
     def execute(self, query: str, context: dict) -> SkillResult:
         cmd = query.strip()
 
-        # Strip slash prefixes
-        for prefix in ("/run ", "/shell ", "/exec "):
+        # Strip prefixes (slash and natural language)
+        for prefix in ("/run ", "/shell ", "/exec ", "run ", "execute "):
             if cmd.lower().startswith(prefix):
                 cmd = cmd[len(prefix):]
                 break
@@ -86,7 +89,7 @@ class ShellSkill(Skill):
             text = "\n".join(parts) if parts else "(no output)"
             return SkillResult(
                 content=f"$ {cmd}\n{text}",
-                inject_as_context=True,
+                display_raw=True,
             )
         except subprocess.TimeoutExpired:
             return SkillResult(content=f"$ {cmd}\ntimed out after 30s", display_raw=True)
@@ -140,8 +143,10 @@ class AppLauncherSkill(Skill):
         if any(w in q for w in ["open ", "launch ", "start "]):
             for app in self.APP_MAP:
                 if app in q:
-                    return 0.85
-        return super().can_handle(q) * 0.5
+                    return 0.9
+            # "open <something>" is probably an app launch
+            return 0.7
+        return super().can_handle(q) * 0.3
 
     def execute(self, query: str, context: dict) -> SkillResult:
         q = query.lower().strip()
@@ -200,6 +205,9 @@ class FileSkill(Skill):
         q = query.lower()
         if q.startswith("/find ") or q.startswith("/files "):
             return 1.0
+        if any(p in q for p in ["find file", "search file", "where is", "disk usage", "largest file",
+                                 "recent file", "recent download", "my downloads", "what's in"]):
+            return 0.85
         return super().can_handle(q)
 
     def execute(self, query: str, context: dict) -> SkillResult:
@@ -515,6 +523,14 @@ class NetworkSkill(Skill):
         "connectivity", "is it down",
     ]
     priority = 60
+
+    def can_handle(self, query: str) -> float:
+        q = query.lower()
+        if any(p in q for p in ["my ip", "ip address", "ping ", "am i online", "internet connection"]):
+            return 0.9
+        if any(p in q for p in ["network", "wifi", "connectivity", "connected to"]):
+            return 0.7
+        return super().can_handle(q)
 
     def execute(self, query: str, context: dict) -> SkillResult:
         q = query.lower().strip()

@@ -256,6 +256,37 @@ def get_config() -> RokanConfig:
     return _CONFIG
 
 
+_env_loaded = False
+
+
+def _load_env_file():
+    """Load ~/.rokan/.env into os.environ (once). No deps needed."""
+    global _env_loaded
+    if _env_loaded:
+        return
+    _env_loaded = True
+
+    env_path = _data_dir() / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            eq = line.find("=")
+            if eq <= 0:
+                continue
+            key = line[:eq].strip()
+            val = line[eq + 1:].strip().strip("'\"")
+            if val and key not in os.environ:
+                os.environ[key] = val
+    except Exception:
+        pass
+
+
 def get_api_key(env_var: str) -> Optional[str]:
-    """Get API key from environment. NEVER hardcoded."""
+    """Get API key from environment or ~/.rokan/.env."""
+    _load_env_file()
     return os.environ.get(env_var) or None

@@ -167,17 +167,29 @@ def recall():
     return jsonify({"results": results})
 
 
+@app.route("/api/history")
+def history():
+    """Return recent conversation for current session (UI reload)."""
+    agent = get_agent()
+    messages = agent.memory.get_conversation(agent.session_id, limit=50)
+    return jsonify({"messages": messages, "session_id": agent.session_id})
+
+
 @app.route("/api/voice/speak", methods=["POST"])
 def speak():
     data = request.get_json(force=True)
     text = data.get("text", "")
-    try:
-        from rokan_tui.voice import RokanVoice
-        voice = RokanVoice()
-        voice.speak(text)
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+
+    def _speak():
+        try:
+            from rokan_tui.voice import RokanVoice
+            voice = RokanVoice()
+            voice.speak(text)
+        except Exception:
+            pass
+
+    threading.Thread(target=_speak, daemon=True).start()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/clear", methods=["POST"])

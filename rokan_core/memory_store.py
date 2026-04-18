@@ -213,11 +213,10 @@ class MemoryStore:
 
     # ── Cleanup ──────────────────────────────────────────────────
 
-    def cleanup_old(self, days: int = 365):
+    def cleanup_old(self, days: int = 365) -> int:
         """Remove episodic memories older than N days."""
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
         with self._conn() as conn:
-            # Get IDs to delete
             rows = conn.execute(
                 "SELECT id FROM memories WHERE tier = 'episodic' AND created_at < ?",
                 (cutoff,),
@@ -227,7 +226,7 @@ class MemoryStore:
                 placeholders = ",".join("?" * len(ids))
                 conn.execute(f"DELETE FROM memories WHERE id IN ({placeholders})", ids)
                 conn.execute(f"DELETE FROM memory_fts WHERE rowid IN ({placeholders})", ids)
-        return len(ids) if 'ids' in dir() else 0
+        return len(ids)
 
     def stats(self) -> dict:
         """Memory statistics."""

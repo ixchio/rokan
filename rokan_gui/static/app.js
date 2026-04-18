@@ -31,6 +31,19 @@ async function boot() {
     line("connecting...");
   }
 
+  // Load past conversation if any
+  try {
+    const hist = await fetch("/api/history");
+    const hdata = await hist.json();
+    if (hdata.messages && hdata.messages.length > 0) {
+      line(`${hdata.messages.length} messages from last session`, "hi");
+      for (const m of hdata.messages.slice(-20)) {
+        if (m.role === "user") addMsg(m.content, "user");
+        else if (m.role === "assistant") addMsg(m.content, "ai");
+      }
+    }
+  } catch (e) {}
+
   setInterval(pollStatus, 3000);
   document.getElementById("input").focus();
 }
