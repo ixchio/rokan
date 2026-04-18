@@ -155,54 +155,237 @@ class SearchSkill(Skill):
 
 
 class SystemSkill(Skill):
-    """System monitoring — CPU, RAM, disk, processes."""
+    """Deep system intelligence — full kernel/process/network/hardware awareness."""
     name = "system"
     description = "System monitoring and control"
     triggers = [
         "system status", "system", "cpu", "ram", "memory usage",
         "disk", "processes", "top", "what's running", "resource",
-        "my computer", "my machine", "slow",
+        "my computer", "my machine", "slow", "battery", "temperature",
+        "gpu", "network", "connections", "ports", "services",
+        "kernel", "uptime", "usb", "devices", "kill", "updates",
+        "what's eating", "what's using", "who's connected",
+        "journal", "logs", "dmesg", "failed", "crash",
     ]
     priority = 70
 
+    def can_handle(self, query: str) -> float:
+        q = query.lower()
+        if any(p in q for p in ["system status", "what's running", "what's eating",
+                                 "what's using my", "kill process", "kill pid",
+                                 "failed services", "journal", "dmesg"]):
+            return 0.9
+        if any(p in q for p in ["battery", "temperature", "gpu", "usb devices",
+                                 "open ports", "connections", "top processes"]):
+            return 0.85
+        return super().can_handle(q)
+
     def execute(self, query: str, context: dict) -> SkillResult:
+        q = query.lower().strip()
+
         try:
-            import psutil
-
-            def gb(b): return round(b / (1024**3), 1)
-
-            cpu = psutil.cpu_percent(interval=1)
-            mem = psutil.virtual_memory()
-            disk = psutil.disk_usage("/")
-
-            # Get top processes
-            procs = []
-            for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
-                try:
-                    info = p.info
-                    if info["cpu_percent"] and info["cpu_percent"] > 1:
-                        procs.append(info)
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-            procs.sort(key=lambda x: x.get("cpu_percent", 0), reverse=True)
-            top_5 = procs[:5]
-
-            status = (
-                f"[SYSTEM STATUS — EXACT NUMBERS, DO NOT ROUND OR CHANGE THESE]\n"
-                f"CPU: {cpu}% used, {psutil.cpu_count()} cores\n"
-                f"RAM: total={gb(mem.total)}GB, used={gb(mem.used)}GB, free={gb(mem.available)}GB, {mem.percent}% used\n"
-                f"Disk: total={gb(disk.total)}GB, used={gb(disk.used)}GB, free={gb(disk.free)}GB, {disk.percent}% used\n"
-            )
-
-            if top_5:
-                status += "\nTop processes by CPU:\n"
-                for p in top_5:
-                    status += f"  {p['name']} (PID {p['pid']}): CPU {p['cpu_percent']:.1f}%, RAM {p['memory_percent']:.1f}%\n"
-
-            return SkillResult(content=status, inject_as_context=True)
-
+            from rokan_core import system_deep as sd
         except ImportError:
-            return SkillResult(content="[SYSTEM] psutil not available", inject_as_context=True)
+            return SkillResult(content="system_deep module not available", display_raw=True)
+
+        # Route to specific queries
+        if "kill" in q:
+            return self._handle_kill(q, sd)
+        if "process" in q and ("find" in q or "search" in q or "where" in q):
+            return self._handle_find_process(q, sd)
+        if any(w in q for w in ["battery", "charge", "power"]):
+            return self._handle_battery(sd)
+        if any(w in q for w in ["temperature", "temp", "hot", "thermal"]):
+            return self._handle_temps(sd)
+        if any(w in q for w in ["gpu", "graphics", "nvidia", "amd"]):
+            return self._handle_gpu(sd)
+        if any(w in q for w in ["usb", "devices", "plugged"]):
+            return self._handle_usb(sd)
+        if any(w in q for w in ["port", "listening", "open port"]):
+            return self._handle_ports(sd)
+        if any(w in q for w in ["connection", "connected", "who's connected"]):
+            return self._handle_connections(sd)
+        if any(w in q for w in ["service", "failed", "systemd"]):
+            return self._handle_services(sd)
+        if any(w in q for w in ["journal", "log", "dmesg", "kernel message"]):
+            return self._handle_logs(q, sd)
+        if any(w in q for w in ["kernel", "distro", "version", "uptime"]):
+            return self._handle_kernel(sd)
+        if any(w in q for w in ["update", "upgrade", "package"]):
+            return self._handle_updates(sd)
+        if any(w in q for w in ["disk", "storage", "mount", "partition"]):
+            return self._handle_disks(sd)
+        if any(w in q for w in ["top", "eating", "using", "hungry", "hog"]):
+            return self._handle_top(q, sd)
+
+        # Default: full snapshot
+        return self._handle_full(sd)
+
+    def _handle_full(self, sd) -> SkillResult:
+        ctx = sd.build_context_string()
+        return SkillResult(content=ctx or "[SYSTEM] could not read system state", inject_as_context=True)
+
+    def _handle_kill(self, q: str, sd) -> SkillResult:
+        import re
+        m = re.search(r'(?:kill|stop|end)\s+(?:process\s+)?(?:pid\s+)?(\d+)', q)
+        if m:
+            pid = int(m.group(1))
+            force = "force" in q or "-9" in q
+            result = sd.kill_process(pid, force=force)
+            return SkillResult(content=result, display_raw=True)
+        # Try killing by name
+        m = re.search(r'(?:kill|stop|end)\s+(\S+)', q)
+        if m:
+            name = m.group(1)
+            procs = sd.find_process(name)
+            if not procs:
+                return SkillResult(content=f"no process matching '{name}'", display_raw=True)
+            if len(procs) == 1:
+                result = sd.kill_process(procs[0]["pid"])
+                return SkillResult(content=result, display_raw=True)
+            lines = [f"multiple matches for '{name}':"]
+            for p in procs[:10]:
+                lines.append(f"  PID {p['pid']}: {p['name']} (CPU {p['cpu']}%, MEM {p['mem_pct']}%)")
+            lines.append("specify: kill pid <number>")
+            return SkillResult(content="\n".join(lines), display_raw=True)
+        return SkillResult(content="specify what to kill: kill <name> or kill pid <number>", display_raw=True)
+
+    def _handle_find_process(self, q: str, sd) -> SkillResult:
+        import re
+        m = re.search(r'(?:find|search|where)\s+(?:process\s+)?(\S+)', q)
+        name = m.group(1) if m else ""
+        if not name:
+            return SkillResult(content="find what process?", display_raw=True)
+        procs = sd.find_process(name)
+        if not procs:
+            return SkillResult(content=f"no process matching '{name}'", display_raw=True)
+        lines = [f"processes matching '{name}' ({len(procs)}):"]
+        for p in procs[:15]:
+            lines.append(f"  PID {p['pid']}: {p['name']} CPU={p['cpu']}% MEM={p['mem_pct']}%")
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_battery(self, sd) -> SkillResult:
+        bat = sd.get_battery()
+        if not bat:
+            return SkillResult(content="no battery detected (desktop?)", display_raw=True)
+        plug = "plugged in" if bat.get("plugged") else "on battery"
+        mins = bat.get("minutes_left")
+        t = f", {int(mins)} minutes remaining" if mins else ""
+        return SkillResult(content=f"battery: {bat['percent']}% ({plug}{t})", inject_as_context=True)
+
+    def _handle_temps(self, sd) -> SkillResult:
+        temps = sd.get_temperatures()
+        if not temps:
+            return SkillResult(content="no temperature sensors found", display_raw=True)
+        lines = ["temperatures:"]
+        for name, t in temps.items():
+            line = f"  {name}: {t['current']}C"
+            if t.get("high"):
+                line += f" (high={t['high']}C)"
+            lines.append(line)
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_gpu(self, sd) -> SkillResult:
+        gpu = sd.get_gpu_info()
+        if not gpu:
+            return SkillResult(content="no GPU info available (nvidia-smi not found?)", display_raw=True)
+        return SkillResult(content=f"GPU: {gpu}", inject_as_context=True)
+
+    def _handle_usb(self, sd) -> SkillResult:
+        devs = sd.get_usb_devices()
+        if not devs:
+            return SkillResult(content="no USB devices (or lsusb not available)", display_raw=True)
+        lines = [f"USB devices ({len(devs)}):"] + [f"  {d}" for d in devs]
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_ports(self, sd) -> SkillResult:
+        ports = sd.get_open_ports()
+        if not ports:
+            return SkillResult(content="no listening ports found", display_raw=True)
+        lines = [f"listening ports ({len(ports)}):"]
+        for p in ports[:20]:
+            proc = f" ({p['process']})" if p.get("process") else ""
+            lines.append(f"  {p['address']}{proc}")
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_connections(self, sd) -> SkillResult:
+        conns = sd.get_network_connections()
+        if not conns:
+            return SkillResult(content="no active connections", display_raw=True)
+        # Group by process
+        by_proc = {}
+        for c in conns:
+            name = c.get("process") or f"PID {c.get('pid', '?')}"
+            by_proc.setdefault(name, []).append(c)
+        lines = [f"network connections ({len(conns)}):"]
+        for proc, cs in sorted(by_proc.items(), key=lambda x: -len(x[1])):
+            lines.append(f"  {proc}: {len(cs)} connections")
+            for c in cs[:3]:
+                remote = c.get("remote", "")
+                if remote:
+                    lines.append(f"    -> {remote} ({c.get('status', '')})")
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_services(self, sd) -> SkillResult:
+        failed = sd.get_failed_services()
+        if not failed:
+            return SkillResult(content="all services running — no failures", inject_as_context=True)
+        lines = [f"failed services ({len(failed)}):"]
+        for s in failed:
+            lines.append(f"  {s}")
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_logs(self, q: str, sd) -> SkillResult:
+        if "dmesg" in q or "kernel" in q:
+            entries = sd.get_dmesg(15)
+            label = "kernel messages (dmesg)"
+        elif "auth" in q or "login" in q or "ssh" in q:
+            entries = sd.get_auth_log(10)
+            label = "auth log"
+        else:
+            prio = "error" if "error" in q else "warning"
+            entries = sd.get_recent_journal(15, prio)
+            label = f"journal ({prio}+)"
+        if not entries:
+            return SkillResult(content=f"no {label} entries", display_raw=True)
+        content = f"{label}:\n" + "\n".join(entries[:15])
+        return SkillResult(content=content, inject_as_context=True)
+
+    def _handle_kernel(self, sd) -> SkillResult:
+        info = sd.get_kernel_info()
+        lines = [f"{k}: {v}" for k, v in info.items() if v]
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_updates(self, sd) -> SkillResult:
+        n = sd.get_upgradable_packages()
+        recent = sd.get_recently_installed(5)
+        parts = [f"upgradable packages: {n}"]
+        if recent:
+            parts.append("recently installed:")
+            parts.extend(f"  {r}" for r in recent)
+        return SkillResult(content="\n".join(parts), inject_as_context=True)
+
+    def _handle_disks(self, sd) -> SkillResult:
+        disks = sd.get_disk_info()
+        if not disks:
+            return SkillResult(content="no disk info available", display_raw=True)
+        lines = ["disks:"]
+        for d in disks:
+            lines.append(f"  {d['device']} on {d['mount']}: {d['used_gb']}GB/{d['total_gb']}GB ({d['percent']}%) [{d['fstype']}]")
+        io = sd.get_disk_io()
+        if io:
+            lines.append(f"  I/O: read {io['read_mb']}MB, written {io['write_mb']}MB")
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
+
+    def _handle_top(self, q: str, sd) -> SkillResult:
+        sort = "memory" if any(w in q for w in ["ram", "memory", "mem"]) else "cpu"
+        procs = sd.get_top_processes(10, sort)
+        if not procs:
+            return SkillResult(content="no process data available", display_raw=True)
+        lines = [f"top 10 by {sort}:"]
+        for p in procs:
+            lines.append(f"  {p['name']:20} PID={p['pid']:>6} CPU={p['cpu']:>5.1f}% MEM={p['mem_mb']:>7.1f}MB ({p['mem_pct']:.1f}%)")
+        return SkillResult(content="\n".join(lines), inject_as_context=True)
 
 
 class MemorySkill(Skill):
