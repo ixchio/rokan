@@ -95,6 +95,14 @@ class RokanAgent:
         for skill in create_default_skills(self.memory):
             self.skills.register(skill)
 
+        # Register desktop skills (FRIDAY-class)
+        try:
+            from rokan_core.skills_desktop import create_desktop_skills
+            for skill in create_desktop_skills():
+                self.skills.register(skill)
+        except ImportError:
+            pass
+
     def start(self):
         """Start background services."""
         self.proactive.start()
@@ -295,6 +303,21 @@ class RokanAgent:
             if sys_skill:
                 result = sys_skill.execute("full system status", {})
                 yield {"type": "skill", "text": result.content}
+            return
+
+        # Generic slash routing — /run, /open, /find, /remind, /ping, etc.
+        cmd_name = command[1:]  # strip leading /
+        skill = self.skills.get(cmd_name)
+        if skill:
+            result = skill.execute(arg or "", {"history": self.history})
+            if result.display_raw:
+                yield {"type": "skill", "text": result.content}
+            elif result.inject_as_context:
+                for chunk in self.llm.chat_stream(
+                    [{"role": "user", "content": user_input}],
+                    context_injection=result.content,
+                ):
+                    yield chunk
             return
 
         # Unknown slash command — not handled, let it flow to LLM
