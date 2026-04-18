@@ -1,336 +1,410 @@
 #!/bin/bash
-# Rokan Installation Script for Linux
-# Installs Rokan CLI and TUI as a system software
-# Supports both user and system-wide installation
+# ═══════════════════════════════════════════════════════════════════
+# Rokan — Desktop App Installer for Linux
+# Installs as a real desktop application:
+#   • CLI command: rokan
+#   • Desktop app in your app menu (GNOME/KDE/XFCE/etc)
+#   • Optional systemd service (auto-start)
+#   • Voice playback support (mpv)
+#
+# Usage:
+#   ./install-rokan.sh          # User install (recommended)
+#   sudo ./install-rokan.sh system  # System-wide install
+# ═══════════════════════════════════════════════════════════════════
 
-set -e
+ROKAN_VERSION="2.0.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_TYPE="${1:-user}"
 
 # Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+R='\033[0;31m' G='\033[0;32m' Y='\033[1;33m' B='\033[0;34m' C='\033[0;36m' N='\033[0m'
+ok()   { echo -e "${G}[✓]${N} $1"; }
+info() { echo -e "${B}[*]${N} $1"; }
+warn() { echo -e "${Y}[!]${N} $1"; }
+fail() { echo -e "${R}[✗]${N} $1"; }
 
-# Paths
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_TYPE="${1:-user}"  # user or system
+# ── Paths ────────────────────────────────────────────────────────
+if [ "$INSTALL_TYPE" = "system" ]; then
+    VENV="/opt/rokan/venv"
+    BIN_DIR="/usr/local/bin"
+    DESKTOP_DIR="/usr/share/applications"
+    SERVICE_DIR="/etc/systemd/system"
+    ICON_DIR="/usr/share/icons/hicolor/256x256/apps"
+else
+    VENV="$HOME/.local/opt/rokan/venv"
+    BIN_DIR="$HOME/.local/bin"
+    DESKTOP_DIR="$HOME/.local/share/applications"
+    SERVICE_DIR="$HOME/.config/systemd/user"
+    ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+fi
+DATA_DIR="$HOME/.rokan"
+CONFIG_DIR="$HOME/.config/rokan"
 
-print_banner() {
-    echo -e "${CYAN}"
-    cat << "EOF"
-╔════════════════════════════════════════════╗
-║                                            ║
-║   ██████╗  ██████╗ ██╗  ██╗ █████╗ ██╗    ║
-║   ██╔══██╗██╔═══██╗██║ ██╔╝██╔══██╗██║    ║
-║   ██████╔╝██║   ██║█████╔╝ ███████║██║    ║
-║   ██╔══██╗██║   ██║██╔═██╗ ██╔══██║██║    ║
-║   ██║  ██║╚██████╔╝██║  ██╗██║  ██║██║    ║
-║   ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝    ║
-║                                            ║
-║   The Player. Linux-first. System v2.0    ║
-║   Sung Jin-Woo Edition                     ║
-║                                            ║
-╚════════════════════════════════════════════╝
+# ── Banner ───────────────────────────────────────────────────────
+banner() {
+    echo -e "${C}"
+    cat << 'EOF'
+
+   ██████╗  ██████╗ ██╗  ██╗ █████╗ ███╗   ██╗
+   ██╔══██╗██╔═══██╗██║ ██╔╝██╔══██╗████╗  ██║
+   ██████╔╝██║   ██║█████╔╝ ███████║██╔██╗ ██║
+   ██╔══██╗██║   ██║██╔═██╗ ██╔══██║██║╚██╗██║
+   ██║  ██║╚██████╔╝██║  ██╗██║  ██║██║ ╚████║
+   ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
+
+   Desktop Installer v2.0 — The System
 EOF
-    echo -e "${NC}"
+    echo -e "${N}"
 }
 
-log_info() {
-    echo -e "${BLUE}[*]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[✓]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[!]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[✗]${NC} $1"
-}
-
+# ── Step 1: Check Python ────────────────────────────────────────
 check_python() {
-    log_info "Checking Python installation..."
+    info "Checking Python..."
 
     if ! command -v python3 &> /dev/null; then
-        log_error "Python 3 not found. Please install Python 3.10+"
+        fail "Python 3 not found. Install it:"
+        echo "  Ubuntu/Debian:  sudo apt install python3 python3-venv python3-pip"
+        echo "  Fedora:         sudo dnf install python3 python3-pip"
+        echo "  Arch:           sudo pacman -S python python-pip"
         exit 1
     fi
 
-    PY_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-    PY_MAJOR=$(echo $PY_VERSION | cut -d. -f1)
-    PY_MINOR=$(echo $PY_VERSION | cut -d. -f2)
+    PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    PY_MAJOR=$(echo "$PY_VER" | cut -d. -f1)
+    PY_MINOR=$(echo "$PY_VER" | cut -d. -f2)
 
-    if [ "$PY_MAJOR" -lt 3 ] || ([ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]); then
-        log_error "Python 3.10+ required. Found: $PY_VERSION"
+    if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]; }; then
+        fail "Python 3.10+ required. Found: $PY_VER"
         exit 1
     fi
 
-    log_success "Python $PY_VERSION"
-}
-
-create_venv() {
-    log_info "Creating Python virtual environment..."
-
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        VENV_PATH="/opt/rokan/venv"
-    else
-        VENV_PATH="$HOME/.local/opt/rokan/venv"
+    # Check for venv module
+    if ! python3 -c "import venv" 2>/dev/null; then
+        fail "python3-venv not found. Install it:"
+        echo "  Ubuntu/Debian:  sudo apt install python3-venv"
+        exit 1
     fi
 
-    mkdir -p "$(dirname "$VENV_PATH")"
-
-    if [ ! -d "$VENV_PATH" ]; then
-        python3 -m venv "$VENV_PATH"
-        log_success "Virtual environment created: $VENV_PATH"
-    else
-        log_warn "Virtual environment already exists"
-    fi
-
-    # Export for later use
-    export VENV_PATH
+    ok "Python $PY_VER"
 }
 
-install_dependencies() {
-    log_info "Installing Python dependencies..."
+# ── Step 2: Install system deps (mpv for voice) ────────────────
+install_system_deps() {
+    info "Checking system dependencies..."
 
-    if [ -z "$VENV_PATH" ]; then
-        if [ "$INSTALL_TYPE" = "system" ]; then
-            VENV_PATH="/opt/rokan/venv"
+    if command -v mpv &> /dev/null; then
+        ok "mpv (voice playback) already installed"
+    else
+        warn "mpv not found — installing for voice playback..."
+        if command -v apt &> /dev/null; then
+            sudo apt install -y mpv 2>/dev/null && ok "mpv installed" || warn "Could not install mpv (voice will be silent)"
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y mpv 2>/dev/null && ok "mpv installed" || warn "Could not install mpv"
+        elif command -v pacman &> /dev/null; then
+            sudo pacman -S --noconfirm mpv 2>/dev/null && ok "mpv installed" || warn "Could not install mpv"
         else
-            VENV_PATH="$HOME/.local/opt/rokan/venv"
+            warn "Unknown package manager. Install mpv manually for voice: sudo apt install mpv"
         fi
     fi
-
-    source "$VENV_PATH/bin/activate"
-    pip install --upgrade pip setuptools wheel
-    pip install -q -r "$SCRIPT_DIR/requirements.txt"
-
-    log_success "Dependencies installed"
 }
 
+# ── Step 3: Create venv + install Rokan ─────────────────────────
 install_rokan() {
-    log_info "Installing Rokan package..."
+    info "Creating virtual environment..."
+    mkdir -p "$(dirname "$VENV")"
 
-    if [ -z "$VENV_PATH" ]; then
-        if [ "$INSTALL_TYPE" = "system" ]; then
-            VENV_PATH="/opt/rokan/venv"
-        else
-            VENV_PATH="$HOME/.local/opt/rokan/venv"
-        fi
+    if [ ! -d "$VENV" ]; then
+        python3 -m venv "$VENV"
+        ok "Venv created: $VENV"
+    else
+        ok "Venv exists: $VENV"
     fi
 
-    source "$VENV_PATH/bin/activate"
-    cd "$SCRIPT_DIR"
-    pip install -e .
+    info "Installing Rokan and dependencies..."
+    "$VENV/bin/pip" install --upgrade pip setuptools wheel -q
+    "$VENV/bin/pip" install -e "$SCRIPT_DIR" -q
 
-    log_success "Rokan package installed"
+    # Optional: install search support
+    "$VENV/bin/pip" install duckduckgo-search -q 2>/dev/null || true
+
+    ok "Rokan v$ROKAN_VERSION installed"
 }
 
-create_launcher_script() {
-    log_info "Creating launcher script..."
-
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        BIN_DIR="/usr/local/bin"
-        VENV_PATH="/opt/rokan/venv"
-    else
-        BIN_DIR="$HOME/.local/bin"
-        VENV_PATH="$HOME/.local/opt/rokan/venv"
-    fi
-
+# ── Step 4: Create launcher script ──────────────────────────────
+create_launcher() {
+    info "Creating launcher: ${BIN_DIR}/rokan"
     mkdir -p "$BIN_DIR"
 
-    cat > "$BIN_DIR/rokan" << EOF
+    cat > "${BIN_DIR}/rokan" << LAUNCHER
 #!/bin/bash
-# Rokan launcher script
-source "$VENV_PATH/bin/activate"
+# Rokan — The System
+# Auto-generated launcher. Activates venv and runs rokan.
+
+# Load API key from config if not already set
+if [ -z "\$NVIDIA_API_KEY" ] && [ -f "$DATA_DIR/.env" ]; then
+    export \$(grep -v '^#' "$DATA_DIR/.env" | xargs) 2>/dev/null
+fi
+
+source "$VENV/bin/activate"
 exec python -m rokan_cli.main "\$@"
-EOF
+LAUNCHER
 
-    chmod +x "$BIN_DIR/rokan"
-
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        log_success "Launcher installed: /usr/local/bin/rokan"
-        echo "export PATH=/usr/local/bin:\$PATH" >> /etc/profile.d/rokan.sh 2>/dev/null || true
-    else
-        log_success "Launcher installed: $HOME/.local/bin/rokan"
-        if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
-            log_warn "Add this to your ~/.bashrc or ~/.zshrc:"
-            echo "export PATH=\"\$HOME/.local/bin:\$PATH\""
-        fi
-    fi
+    chmod +x "${BIN_DIR}/rokan"
+    ok "Launcher: ${BIN_DIR}/rokan"
 }
 
-create_directories() {
-    log_info "Creating data directories..."
-
-    mkdir -p "$HOME/.rokan"/{logs,cache,data}
-    mkdir -p "$HOME/.config/rokan"
-
-    log_success "Directories created in ~/.rokan"
-}
-
-create_desktop_launcher() {
-    log_info "Creating desktop launcher..."
-
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        VENV_PATH="/opt/rokan/venv"
-        DESKTOP_DIR="/usr/share/applications"
-    else
-        VENV_PATH="$HOME/.local/opt/rokan/venv"
-        DESKTOP_DIR="$HOME/.local/share/applications"
-    fi
-
+# ── Step 5: Create .desktop file (app menu entry) ──────────────
+create_desktop_entry() {
+    info "Creating desktop app entry..."
     mkdir -p "$DESKTOP_DIR"
 
-    cat > "$DESKTOP_DIR/rokan.desktop" << EOF
+    cat > "${DESKTOP_DIR}/rokan.desktop" << DESKTOP
 [Desktop Entry]
-Version=1.0
+Version=2.0
 Type=Application
 Name=Rokan
-Comment=The Player - AI System Assistant
-Exec=bash -c 'source $VENV_PATH/bin/activate && python -m rokan_tui.app'
-Icon=terminal
+GenericName=AI Assistant
+Comment=F.R.I.D.A.Y.-class ambient intelligence for your machine
+Exec=bash -c 'if [ -f $DATA_DIR/.env ]; then export \$(grep -v "^#" $DATA_DIR/.env | xargs) 2>/dev/null; fi; source $VENV/bin/activate && python -m rokan_tui.app'
+Icon=rokan
 Terminal=true
-Categories=Development;Utility;
-Keywords=AI;CLI;Assistant;
-EOF
+Categories=Development;Utility;System;
+Keywords=AI;Assistant;LLM;System;Monitor;
+StartupNotify=true
+DESKTOP
 
-    chmod 644 "$DESKTOP_DIR/rokan.desktop"
+    chmod 644 "${DESKTOP_DIR}/rokan.desktop"
 
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        log_success "Desktop launcher installed: /usr/share/applications/rokan.desktop"
-    else
-        log_success "Desktop launcher installed: $DESKTOP_DIR/rokan.desktop"
+    # Validate if desktop-file-validate exists
+    if command -v desktop-file-validate &> /dev/null; then
+        desktop-file-validate "${DESKTOP_DIR}/rokan.desktop" 2>/dev/null || true
     fi
+
+    # Update desktop database
+    if command -v update-desktop-database &> /dev/null; then
+        update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    fi
+
+    ok "Desktop entry: ${DESKTOP_DIR}/rokan.desktop"
+    ok "Rokan will appear in your app menu"
 }
 
-create_systemd_service() {
-    log_info "Creating systemd user service..."
+# ── Step 6: Create icon ─────────────────────────────────────────
+create_icon() {
+    info "Creating app icon..."
+    mkdir -p "$ICON_DIR"
 
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        VENV_PATH="/opt/rokan/venv"
-        SERVICE_DIR="/etc/systemd/system"
-    else
-        VENV_PATH="$HOME/.local/opt/rokan/venv"
-        SERVICE_DIR="$HOME/.config/systemd/user"
+    # Generate a simple SVG icon (terminal + brain aesthetic)
+    cat > "${ICON_DIR}/rokan.svg" << 'ICON'
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#04040a"/>
+      <stop offset="100%" style="stop-color:#0a0a1a"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00aaff"/>
+      <stop offset="100%" style="stop-color:#4169e1"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="40" fill="none" stroke="url(#glow)" stroke-width="2" opacity="0.4"/>
+  <text x="128" y="148" font-family="monospace" font-size="96" font-weight="bold" fill="url(#glow)" text-anchor="middle">R</text>
+  <circle cx="128" cy="210" r="6" fill="#00aaff" opacity="0.8"/>
+  <circle cx="108" cy="210" r="3" fill="#00aaff" opacity="0.4"/>
+  <circle cx="148" cy="210" r="3" fill="#00aaff" opacity="0.4"/>
+</svg>
+ICON
+
+    # Update icon cache
+    if command -v gtk-update-icon-cache &> /dev/null; then
+        gtk-update-icon-cache -f -t "$(dirname "$(dirname "$ICON_DIR")")" 2>/dev/null || true
     fi
 
+    ok "App icon installed"
+}
+
+# ── Step 7: Create data directories + env template ──────────────
+create_data_dirs() {
+    info "Creating data directories..."
+    mkdir -p "$DATA_DIR"/{logs,cache}
+    mkdir -p "$CONFIG_DIR"
+
+    # Copy config if not present
+    if [ ! -f "$CONFIG_DIR/config.yaml" ] && [ -f "$SCRIPT_DIR/config.yaml" ]; then
+        cp "$SCRIPT_DIR/config.yaml" "$CONFIG_DIR/config.yaml"
+        ok "Config copied to $CONFIG_DIR/config.yaml"
+    fi
+
+    # Create .env template if not present
+    if [ ! -f "$DATA_DIR/.env" ]; then
+        cat > "$DATA_DIR/.env" << 'ENV'
+# Rokan Environment — Put your API keys here
+# This file is auto-loaded when you run rokan.
+
+# REQUIRED — Get free at https://build.nvidia.com
+NVIDIA_API_KEY=
+
+# OPTIONAL — For web search (DuckDuckGo works without a key)
+# TAVILY_API_KEY=
+ENV
+        ok "API key file: $DATA_DIR/.env  ← PUT YOUR KEY HERE"
+    else
+        ok "API key file already exists: $DATA_DIR/.env"
+    fi
+
+    ok "Data: $DATA_DIR"
+}
+
+# ── Step 8: Create systemd service (optional) ───────────────────
+create_service() {
+    info "Creating systemd service (optional, for auto-start)..."
     mkdir -p "$SERVICE_DIR"
 
-    cat > "$SERVICE_DIR/rokan.service" << EOF
+    if [ "$INSTALL_TYPE" = "system" ]; then
+        SVCUSER="User=$USER"
+    else
+        SVCUSER=""
+    fi
+
+    cat > "${SERVICE_DIR}/rokan.service" << SERVICE
 [Unit]
-Description=Rokan - The Player AI System
-After=network.target
+Description=Rokan — Ambient Intelligence
+After=network.target graphical-session.target
+Wants=graphical-session.target
 
 [Service]
 Type=simple
-User=$USER
+${SVCUSER}
 WorkingDirectory=$HOME
-Environment="PATH=$VENV_PATH/bin:\$PATH"
-ExecStart=$VENV_PATH/bin/python -m rokan_cli.main tui
+EnvironmentFile=-$DATA_DIR/.env
+Environment="PATH=$VENV/bin:/usr/local/bin:/usr/bin"
+ExecStart=$VENV/bin/python -m rokan_cli.main tui
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 
 [Install]
 WantedBy=default.target
-EOF
+SERVICE
 
-    chmod 644 "$SERVICE_DIR/rokan.service"
+    chmod 644 "${SERVICE_DIR}/rokan.service"
 
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        log_success "Systemd service installed: /etc/systemd/system/rokan.service"
-        log_info "Enable with: sudo systemctl enable rokan"
-        log_info "Start with: sudo systemctl start rokan"
-    else
-        log_success "Systemd user service installed: $SERVICE_DIR/rokan.service"
-        log_info "Enable with: systemctl --user enable rokan"
-        log_info "Start with: systemctl --user start rokan"
+    if [ "$INSTALL_TYPE" != "system" ]; then
         systemctl --user daemon-reload 2>/dev/null || true
     fi
+
+    ok "Service: ${SERVICE_DIR}/rokan.service"
 }
 
-print_summary() {
-    echo ""
-    echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║          ROKAN INSTALLATION COMPLETE                  ║${NC}"
-    echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
-    echo ""
-
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        echo -e "${CYAN}System-wide Installation${NC}"
-        echo -e "  Install Type:  ${YELLOW}System${NC}"
-        echo -e "  Binary:        ${YELLOW}/usr/local/bin/rokan${NC}"
-        echo -e "  Venv:          ${YELLOW}/opt/rokan/venv${NC}"
-        echo -e "  Service:       ${YELLOW}/etc/systemd/system/rokan.service${NC}"
-    else
-        echo -e "${CYAN}User Installation${NC}"
-        echo -e "  Install Type:  ${YELLOW}User${NC}"
-        echo -e "  Binary:        ${YELLOW}$HOME/.local/bin/rokan${NC}"
-        echo -e "  Venv:          ${YELLOW}$HOME/.local/opt/rokan/venv${NC}"
-        echo -e "  Service:       ${YELLOW}$HOME/.config/systemd/user/rokan.service${NC}"
+# ── Step 9: PATH check ──────────────────────────────────────────
+check_path() {
+    if echo "$PATH" | grep -q "$BIN_DIR"; then
+        return
     fi
 
-    echo ""
-    echo -e "${BLUE}Quick Start:${NC}"
-    echo -e "  ${YELLOW}rokan${NC}              Launch the TUI"
-    echo -e "  ${YELLOW}rokan ask${NC}          Ask a question"
-    echo -e "  ${YELLOW}rokan models${NC}       Show available models"
-    echo -e "  ${YELLOW}rokan status${NC}       System status"
-    echo ""
+    warn "$BIN_DIR is not in your PATH."
 
-    if [ "$INSTALL_TYPE" = "system" ]; then
-        echo -e "${BLUE}Admin Commands:${NC}"
-        echo -e "  ${YELLOW}sudo systemctl enable rokan${NC}   Enable at boot"
-        echo -e "  ${YELLOW}sudo systemctl start rokan${NC}    Start daemon"
-        echo -e "  ${YELLOW}sudo systemctl status rokan${NC}   Check status"
-    else
-        echo -e "${BLUE}User Commands:${NC}"
-        if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
-            echo -e "  ${YELLOW}export PATH=\$HOME/.local/bin:\$PATH${NC}"
-            echo -e "  ${YELLOW}systemctl --user enable rokan${NC}"
-            echo -e "  ${YELLOW}systemctl --user start rokan${NC}"
-        else
-            echo -e "  ${YELLOW}systemctl --user enable rokan${NC}   Enable at boot"
-            echo -e "  ${YELLOW}systemctl --user start rokan${NC}    Start daemon"
+    # Auto-fix for common shells
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+        bash)
+            RC="$HOME/.bashrc"
+            ;;
+        zsh)
+            RC="$HOME/.zshrc"
+            ;;
+        fish)
+            RC="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            RC=""
+            ;;
+    esac
+
+    if [ -n "$RC" ] && [ -f "$RC" ]; then
+        if ! grep -q "$BIN_DIR" "$RC" 2>/dev/null; then
+            echo "" >> "$RC"
+            echo "# Rokan" >> "$RC"
+            echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$RC"
+            ok "Added $BIN_DIR to $RC"
+            warn "Run: source $RC  (or open a new terminal)"
         fi
+    else
+        warn "Add this to your shell config:"
+        echo "  export PATH=\"$BIN_DIR:\$PATH\""
+    fi
+}
+
+# ── Summary ──────────────────────────────────────────────────────
+summary() {
+    echo ""
+    echo -e "${G}╔═══════════════════════════════════════════════════════════╗${N}"
+    echo -e "${G}║              ROKAN v2.0 — INSTALLED                      ║${N}"
+    echo -e "${G}╚═══════════════════════════════════════════════════════════╝${N}"
+    echo ""
+    echo -e "  ${C}Install type:${N}  $INSTALL_TYPE"
+    echo -e "  ${C}Command:${N}       ${Y}rokan${N}"
+    echo -e "  ${C}Venv:${N}          $VENV"
+    echo -e "  ${C}Data:${N}          $DATA_DIR"
+    echo -e "  ${C}Config:${N}        $CONFIG_DIR/config.yaml"
+    echo -e "  ${C}API keys:${N}      $DATA_DIR/.env"
+    echo ""
+    echo -e "  ${R}⚠  IMPORTANT — Set your NVIDIA API key:${N}"
+    echo ""
+    echo -e "  ${Y}nano $DATA_DIR/.env${N}"
+    echo -e "  Add: ${Y}NVIDIA_API_KEY=nvapi-your-key-here${N}"
+    echo -e "  Get one free at: ${C}https://build.nvidia.com${N}"
+    echo ""
+    echo -e "  ${B}Quick Start:${N}"
+    echo -e "    ${Y}rokan${N}                   Launch TUI (desktop app)"
+    echo -e "    ${Y}rokan ask \"hello\"${N}        Ask a question from terminal"
+    echo -e "    ${Y}rokan status${N}             Check system status"
+    echo -e "    ${Y}rokan setup${N}              Verify all dependencies"
+    echo ""
+    echo -e "  ${B}Desktop App:${N}"
+    echo -e "    Search for ${Y}Rokan${N} in your app menu (GNOME/KDE/etc)"
+    echo ""
+
+    if [ "$INSTALL_TYPE" = "system" ]; then
+        echo -e "  ${B}Auto-start (optional):${N}"
+        echo -e "    ${Y}sudo systemctl enable rokan${N}"
+        echo -e "    ${Y}sudo systemctl start rokan${N}"
+    else
+        echo -e "  ${B}Auto-start (optional):${N}"
+        echo -e "    ${Y}systemctl --user enable rokan${N}"
+        echo -e "    ${Y}systemctl --user start rokan${N}"
     fi
 
     echo ""
-    echo -e "${CYAN}Configuration:${NC}"
-    echo -e "  ${YELLOW}~/.rokan/{{logs,cache,data}}${NC}     Data directories"
-    echo -e "  ${YELLOW}~/.config/rokan{{NC}}                 Config directory"
+    echo -e "  ${G}The System is online.${N}"
     echo ""
-    echo -e "${GREEN}Rokan is ready. Execute.${NC}"
 }
 
+# ── Main ─────────────────────────────────────────────────────────
 main() {
-    print_banner
+    banner
 
     if [ "$INSTALL_TYPE" = "system" ] && [ "$EUID" -ne 0 ]; then
-        log_error "System-wide installation requires sudo. Run:"
-        echo "  sudo ./$0 system"
+        fail "System-wide install needs root. Run:"
+        echo "  sudo ./install-rokan.sh system"
         exit 1
     fi
 
-    log_info "Starting Rokan installation ($INSTALL_TYPE mode)"
-    log_info "Source directory: $SCRIPT_DIR"
+    info "Installing Rokan v$ROKAN_VERSION ($INSTALL_TYPE mode)"
+    echo ""
 
     check_python
-    create_venv
-    install_dependencies
+    install_system_deps
     install_rokan
-    create_launcher_script
-    create_directories
-    create_desktop_launcher
-    create_systemd_service
+    create_launcher
+    create_desktop_entry
+    create_icon
+    create_data_dirs
+    create_service
+    check_path
 
-    print_summary
+    summary
 }
 
-# Run main
 main "$@"
