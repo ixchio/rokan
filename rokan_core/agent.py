@@ -102,13 +102,60 @@ class RokanAgent:
         except ImportError:
             pass
 
+        # Register integration skills (git, calendar, email, briefing, automations)
+        try:
+            from rokan_core.skills_integrations import create_integration_skills
+            for skill in create_integration_skills():
+                self.skills.register(skill)
+        except ImportError:
+            pass
+
+        # Screen awareness engine
+        self.screen = None
+        try:
+            from rokan_core.screen_aware import ScreenAwareness
+            self.screen = ScreenAwareness()
+        except ImportError:
+            pass
+
+        # Voice engine
+        self.voice = None
+        try:
+            from rokan_core.voice_engine import VoiceEngine
+            self.voice = VoiceEngine(
+                on_transcript=self._on_voice_input,
+                on_state_change=self._on_voice_state,
+            )
+        except ImportError:
+            pass
+
+        # Automation engine
+        self.automations = None
+        try:
+            from rokan_core.automations import AutomationEngine
+            self.automations = AutomationEngine(on_fire=self._on_automation_fire)
+        except ImportError:
+            pass
+
     def start(self):
-        """Start background services."""
+        """Start all background services."""
         self.proactive.start()
+        if self.screen:
+            self.screen.start()
+        if self.automations:
+            self.automations.start()
+        # Voice starts only when explicitly enabled
+        # (don't auto-start mic without user consent)
 
     def stop(self):
         """Shutdown cleanly."""
         self.proactive.stop()
+        if self.screen:
+            self.screen.stop()
+        if self.automations:
+            self.automations.stop()
+        if self.voice:
+            self.voice.stop()
 
     def set_alert_callback(self, callback: callable):
         """Set callback for proactive alerts (TUI subscribes to this)."""
@@ -118,6 +165,26 @@ class RokanAgent:
         """Handle proactive alert from background engine."""
         if self._alert_callback:
             self._alert_callback(alert)
+
+    def _on_voice_input(self, text: str):
+        """Handle transcribed voice input — process and speak response."""
+        full = ""
+        for chunk in self.process(text):
+            if chunk["type"] == "content":
+                full += chunk["text"]
+            elif chunk["type"] == "skill":
+                full = chunk["text"]
+        if full and self.voice:
+            self.voice.speak_async(full)
+
+    def _on_voice_state(self, state: str):
+        """Voice state changed (idle/listening/processing/speaking)."""
+        pass  # UI can subscribe to this
+
+    def _on_automation_fire(self, auto):
+        """Automation triggered — execute its action."""
+        for chunk in self.process(auto.action):
+            pass  # Execute silently; UI gets results via alerts
 
     # ── Main Entry Point ─────────────────────────────────────────
 
@@ -183,7 +250,13 @@ class RokanAgent:
                     context_parts.append(result.content)
                     skill_handled = True
 
-        # ── Step 4: Build context (search/system/memory) ─────────
+        # ── Step 4: Build context (search/system/memory/screen) ────
+
+        # Screen awareness context (what user is doing right now)
+        if self.screen:
+            screen_ctx = self.screen.build_context()
+            if screen_ctx:
+                context_parts.append(screen_ctx)
 
         # Memory context
         mem_context = self.memory.build_context(user_input, self.session_id)
@@ -387,3 +460,39 @@ class RokanAgent:
 
     def dismiss_alerts(self):
         self.proactive.dismiss_all()
+
+    def start_voice(self):
+        """Start voice loop (requires explicit user consent)."""
+        if self.voice and self.voice.available:
+            self.voice.start()
+
+    def stop_voice(self):
+        if self.voice:
+            self.voice.stop()
+
+    def get_screen_state(self) -> dict:
+        """Get current screen awareness state."""
+        if self.screen:
+            s = self.screen.state
+            return {
+                "active_window": s.active_window,
+                "window_class": s.window_class,
+                "user_state": s.user_state,
+                "idle_seconds": s.idle_seconds,
+                "recent_windows": s.recent_windows,
+            }
+        return {}
+
+    def get_voice_status(self) -> dict:
+        if self.voice:
+            return self.voice.get_status()
+        return {"available": False}
+
+    def get_automations(self) -> list:
+        if self.automations:
+            return [
+                {"id": a.id, "name": a.name, "action": a.action,
+                 "enabled": a.enabled, "type": a.trigger_type}
+                for a in self.automations.list_all()
+            ]
+        return []

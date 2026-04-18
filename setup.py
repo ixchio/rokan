@@ -10,7 +10,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="rokan",
-    version="2.0.0",
+    version="3.0.0",
     author="ixchio",
     author_email="amankumarpandeyin@gmail.com",
     description="F.R.I.D.A.Y.-class ambient intelligence — desktop assistant with memory, skills, and proactive awareness",
@@ -47,6 +47,13 @@ setup(
         "duckduckgo-search>=6.0.0",
     ],
     extras_require={
+        "voice": [
+            "sounddevice>=0.4.6",
+            "numpy>=1.24.0",
+            "faster-whisper>=1.0.0",
+            "openwakeword>=0.6.0",
+            "webrtcvad>=2.0.10",
+        ],
         "window": ["pywebview>=5.0"],
         "search": ["duckduckgo-search>=6.0.0"],
         "research": [
@@ -58,15 +65,12 @@ setup(
             "qdrant-client>=1.12.0",
             "ollama>=0.4.0",
         ],
-        "jobs": ["apscheduler>=3.10.0"],
         "all": [
             "duckduckgo-search>=6.0.0",
-            "tavily-python>=0.5.0",
-            "praw>=7.7.0",
-            "tweepy>=4.14.0",
-            "qdrant-client>=1.12.0",
-            "ollama>=0.4.0",
-            "apscheduler>=3.10.0",
+            "sounddevice>=0.4.6",
+            "numpy>=1.24.0",
+            "faster-whisper>=1.0.0",
+            "openwakeword>=0.6.0",
         ],
     },
     entry_points={

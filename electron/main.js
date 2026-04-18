@@ -18,6 +18,7 @@ const PORT = 18991;
 const isDev = process.argv.includes('--dev');
 
 let mainWindow = null;
+let overlayWindow = null;
 let tray = null;
 let pythonProcess = null;
 
@@ -244,6 +245,75 @@ function createWindow() {
   }
 }
 
+// ── Overlay Widget ──────────────────────────────────────────────
+
+function createOverlay() {
+  const { screen } = require('electron');
+  const display = screen.getPrimaryDisplay();
+  const { width, height } = display.workAreaSize;
+
+  overlayWindow = new BrowserWindow({
+    width: 80,
+    height: 80,
+    x: width - 100,
+    y: height - 100,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    focusable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  overlayWindow.setIgnoreMouseEvents(false);
+
+  // Inline overlay HTML — floating avatar circle
+  const overlayHTML = `
+    <html>
+    <body style="margin:0;background:transparent;overflow:hidden;-webkit-app-region:drag;cursor:pointer">
+      <div id="orb" style="
+        width:64px;height:64px;border-radius:50%;margin:8px;
+        background:#1a1a1a;border:1px solid #333;overflow:hidden;
+        display:flex;align-items:center;justify-content:center;
+        transition: border-color 0.3s;
+      ">
+        <img src="http://127.0.0.1:${PORT}/api/avatar"
+             style="width:100%;height:100%;object-fit:cover;border-radius:50%"
+             onerror="this.style.display='none'"/>
+      </div>
+      <script>
+        const orb = document.getElementById('orb');
+        orb.addEventListener('click', () => {
+          // Tell main process to show main window
+          fetch('http://127.0.0.1:${PORT}/api/status').catch(()=>{});
+        });
+        // Poll for talking state
+        setInterval(async () => {
+          try {
+            const r = await fetch('http://127.0.0.1:${PORT}/api/voice/status');
+            const d = await r.json();
+            orb.style.borderColor = d.running ? '#555' : '#333';
+          } catch(e) {}
+        }, 2000);
+      </script>
+    </body>
+    </html>
+  `;
+
+  overlayWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(overlayHTML));
+
+  // Click on overlay shows main window
+  overlayWindow.webContents.on('will-navigate', (e) => {
+    e.preventDefault();
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
+}
+
 function getIcon() {
   const iconPath = path.join(__dirname, 'build', 'icon.png');
   if (fs.existsSync(iconPath)) {
@@ -303,6 +373,7 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray();
+  createOverlay();
 });
 
 app.on('window-all-closed', () => {

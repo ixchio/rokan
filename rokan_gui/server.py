@@ -138,6 +138,9 @@ def status():
         "memory": mem_stats,
         "skills": skills,
         "system": sys_info,
+        "screen": agent.get_screen_state(),
+        "voice": agent.get_voice_status(),
+        "automations": len(agent.get_automations()),
         "alerts": [
             {"type": a.type, "severity": a.severity, "message": a.message}
             for a in agent.get_pending_alerts()
@@ -197,6 +200,94 @@ def clear():
     agent = get_agent()
     agent.history.clear()
     return jsonify({"ok": True})
+
+
+@app.route("/api/screen")
+def screen_state():
+    """Current screen awareness state."""
+    agent = get_agent()
+    return jsonify(agent.get_screen_state())
+
+
+@app.route("/api/voice/status")
+def voice_status():
+    agent = get_agent()
+    return jsonify(agent.get_voice_status())
+
+
+@app.route("/api/voice/start", methods=["POST"])
+def voice_start():
+    agent = get_agent()
+    agent.start_voice()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/voice/stop", methods=["POST"])
+def voice_stop():
+    agent = get_agent()
+    agent.stop_voice()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/voice/record", methods=["POST"])
+def voice_record():
+    """Record from mic, transcribe, and process. Returns transcript + response."""
+    agent = get_agent()
+    if not agent.voice or not agent.voice.available:
+        return jsonify({"error": "voice not available"}), 400
+
+    data = request.get_json(force=True)
+    duration = data.get("duration", 5.0)
+
+    transcript = agent.voice.record_and_transcribe(duration)
+    if not transcript:
+        return jsonify({"transcript": "", "response": ""})
+
+    # Process through agent
+    full_response = ""
+    for chunk in agent.process(transcript):
+        if chunk["type"] in ("content", "skill"):
+            full_response += chunk["text"]
+
+    # Speak the response
+    if full_response and agent.voice:
+        agent.voice.speak_async(full_response)
+
+    return jsonify({
+        "transcript": transcript,
+        "response": full_response,
+    })
+
+
+@app.route("/api/automations")
+def list_automations():
+    agent = get_agent()
+    return jsonify({"automations": agent.get_automations()})
+
+
+@app.route("/api/automations", methods=["POST"])
+def add_automation():
+    agent = get_agent()
+    data = request.get_json(force=True)
+    text = data.get("text", "").strip()
+    if not text or not agent.automations:
+        return jsonify({"error": "empty or automations unavailable"}), 400
+
+    auto = agent.automations.parse_and_add(text)
+    if auto:
+        return jsonify({
+            "ok": True,
+            "automation": {"id": auto.id, "name": auto.name, "action": auto.action},
+        })
+    return jsonify({"error": "couldn't parse automation"}), 400
+
+
+@app.route("/api/automations/<int:auto_id>", methods=["DELETE"])
+def delete_automation(auto_id):
+    agent = get_agent()
+    if agent.automations and agent.automations.remove(auto_id):
+        return jsonify({"ok": True})
+    return jsonify({"error": "not found"}), 404
 
 
 # ── Run ──────────────────────────────────────────────────────────────

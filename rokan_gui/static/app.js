@@ -73,6 +73,30 @@ function updateSidebar(data) {
   document.getElementById("mem-count").textContent = mem.total_memories || 0;
   document.getElementById("session-count").textContent = (mem.sessions || 0) + " sessions";
 
+  // Screen awareness
+  const screen = data.screen || {};
+  const screenEl = document.getElementById("screen-state");
+  if (screenEl && screen.user_state && screen.user_state !== "unknown") {
+    screenEl.textContent = screen.user_state;
+    if (screen.active_window) {
+      screenEl.title = screen.active_window;
+    }
+  } else if (screenEl) {
+    screenEl.textContent = "--";
+  }
+
+  // Voice status
+  const voice = data.voice || {};
+  const voiceEl = document.getElementById("voice-status");
+  if (voiceEl) {
+    voiceEl.textContent = voice.running ? "listening" : voice.available ? "ready" : "n/a";
+  }
+
+  // Automations count
+  const autoEl = document.getElementById("auto-count");
+  if (autoEl) autoEl.textContent = data.automations || 0;
+
+  // Alerts
   const alerts = data.alerts || [];
   const section = document.getElementById("alerts-section");
   const list = document.getElementById("alerts-list");
