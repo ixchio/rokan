@@ -1,140 +1,98 @@
-/* ═══════════════════════════════════════════════════════════════
-   ROKAN — Desktop App Frontend
-   SSE streaming, boot sequence, system monitoring.
-   ═══════════════════════════════════════════════════════════════ */
-
 let currentMode = "normal";
 let voiceEnabled = true;
 let isStreaming = false;
 
-// ── Boot Sequence ────────────────────────────────────────────────
+// boot
 
 async function boot() {
   const area = document.getElementById("boot-area");
-  const lines = [
-    "[BOOT] Initializing neural link...",
-    "[BOOT] Loading agent core...",
-  ];
 
-  for (const line of lines) {
-    await addBootLine(area, line, 80);
-  }
+  const line = (t, cls) => {
+    const d = document.createElement("div");
+    d.className = "boot-line" + (cls ? " " + cls : "");
+    d.textContent = t;
+    area.appendChild(d);
+  };
 
-  // Fetch real status
   try {
     const res = await fetch("/api/status");
     const data = await res.json();
 
-    if (data.llm_online) {
-      await addBootLine(area, "[BOOT] LLM connection — ESTABLISHED", 60, "ok");
-      for (const [slot, online] of Object.entries(data.models)) {
-        const tag = online ? "ONLINE" : "OFFLINE";
-        const cls = online ? "ok" : "";
-        await addBootLine(area, `[BOOT]   ${slot.toUpperCase().padEnd(12)} — ${tag}`, 40, cls);
-      }
-    } else {
-      await addBootLine(area, "[BOOT] LLM — WAITING (set NVIDIA_API_KEY)", 60);
+    for (const [slot, on] of Object.entries(data.models)) {
+      line(`${slot.padEnd(12)} ${on ? "ok" : "--"}`);
     }
+    line(`memory       ${data.memory.total_memories}`);
+    line(`skills       ${data.skills.length}`);
+    line("");
+    line("ready", "hi");
 
-    await addBootLine(area, `[BOOT] Memory — ${data.memory.total_memories} entries, ${data.memory.sessions} sessions`, 60);
-    await addBootLine(area, `[BOOT] Skills — ${data.skills.length} active: ${data.skills.map(s => s.name).join(", ")}`, 60);
-    await addBootLine(area, "[BOOT] Proactive monitoring — ACTIVE", 60);
-    await addBootLine(area, "[BOOT] Voice synthesis — ONLINE", 60);
-    await addBootLine(area, "", 100);
-    await addBootLine(area, "[SYS]  I'm online. What do you need?", 0, "bright");
-
-    // Update sidebar
     updateSidebar(data);
-
   } catch (e) {
-    await addBootLine(area, `[BOOT] Status check failed: ${e.message}`, 60);
+    line("connecting...");
   }
 
-  // Start periodic status updates
   setInterval(pollStatus, 3000);
-
   document.getElementById("input").focus();
 }
 
-function addBootLine(area, text, delay, cls = "") {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const div = document.createElement("div");
-      div.className = `boot-line ${cls}`;
-      div.textContent = text;
-      area.appendChild(div);
-      scrollToBottom();
-      resolve();
-    }, delay);
-  });
-}
-
-// ── Status Polling ───────────────────────────────────────────────
+// status
 
 async function pollStatus() {
   try {
     const res = await fetch("/api/status");
-    const data = await res.json();
-    updateSidebar(data);
-  } catch (e) { /* silent */ }
+    updateSidebar(await res.json());
+  } catch (e) {}
 }
 
 function updateSidebar(data) {
   const sys = data.system || {};
 
-  // System stats
-  updateStat("cpu", sys.cpu || 0, `${sys.cpu || 0}%`);
-  updateStat("ram", sys.ram_percent || 0, `${sys.ram_percent || 0}%`);
-  updateStat("disk", sys.disk_percent || 0, `${sys.disk_percent || 0}%`);
+  setStat("cpu", sys.cpu || 0);
+  setStat("ram", sys.ram_percent || 0);
+  setStat("disk", sys.disk_percent || 0);
 
-  // Models
-  for (const [slot, online] of Object.entries(data.models || {})) {
-    const el = document.getElementById(`model-${slot}`);
-    if (el) {
-      el.className = `model-row ${online ? "online" : ""}`;
-    }
+  for (const [slot, on] of Object.entries(data.models || {})) {
+    const el = document.getElementById("model-" + slot);
+    if (el) el.className = "model-row" + (on ? " online" : "");
   }
 
-  // Memory
   const mem = data.memory || {};
-  document.getElementById("mem-count").textContent = `${mem.total_memories || 0} memories`;
-  document.getElementById("session-count").textContent = `${mem.sessions || 0} sessions`;
+  document.getElementById("mem-count").textContent = mem.total_memories || 0;
+  document.getElementById("session-count").textContent = (mem.sessions || 0) + " sessions";
 
-  // Alerts
   const alerts = data.alerts || [];
   const section = document.getElementById("alerts-section");
   const list = document.getElementById("alerts-list");
-  if (alerts.length > 0) {
+  if (alerts.length) {
     section.style.display = "";
     list.innerHTML = alerts.slice(0, 3).map(a =>
-      `<div class="alert-item ${a.severity}">${a.message}</div>`
+      '<div class="alert-item">' + esc(a.message) + "</div>"
     ).join("");
   } else {
     section.style.display = "none";
   }
 }
 
-function updateStat(name, pct, label) {
-  const fill = document.getElementById(`${name}-fill`);
-  const val = document.getElementById(`${name}-val`);
+function setStat(name, pct) {
+  const fill = document.getElementById(name + "-fill");
+  const val = document.getElementById(name + "-val");
   if (fill) {
-    fill.style.width = `${Math.min(pct, 100)}%`;
-    fill.className = `stat-fill${pct > 90 ? " crit" : pct > 75 ? " warn" : ""}`;
+    fill.style.width = Math.min(pct, 100) + "%";
+    fill.className = "stat-fill" + (pct > 90 ? " crit" : pct > 75 ? " warn" : "");
   }
-  if (val) val.textContent = label;
+  if (val) val.textContent = Math.round(pct) + "%";
 }
 
-// ── Chat ─────────────────────────────────────────────────────────
+// chat
 
 function handleKey(e) {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
   }
-  // Auto-resize textarea
   const ta = e.target;
   ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 180) + "px";
+  ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
 }
 
 async function sendMessage() {
@@ -145,10 +103,8 @@ async function sendMessage() {
   input.value = "";
   input.style.height = "auto";
 
-  // Add user message
-  addMessage(text, "user");
+  addMsg(text, "user");
 
-  // Determine mode flags
   const payload = {
     message: text,
     think: currentMode === "think",
@@ -156,14 +112,11 @@ async function sendMessage() {
     fast: currentMode === "fast",
   };
 
-  // Start streaming
   isStreaming = true;
   document.getElementById("send-btn").disabled = true;
 
-  let aiMsg = null;
-  let reasonMsg = null;
-  let fullResponse = "";
-  let fullReasoning = "";
+  let aiEl = null, reasonEl = null;
+  let full = "", reasoning = "";
 
   try {
     const res = await fetch("/api/chat", {
@@ -174,67 +127,55 @@ async function sendMessage() {
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    let buf = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() || "";
 
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const payload = line.slice(6);
-        if (payload === "[DONE]") break;
+      for (const ln of lines) {
+        if (!ln.startsWith("data: ")) continue;
+        const raw = ln.slice(6);
+        if (raw === "[DONE]") break;
 
         try {
-          const chunk = JSON.parse(payload);
+          const c = JSON.parse(raw);
 
-          if (chunk.type === "reasoning") {
-            fullReasoning += chunk.text;
-            if (!reasonMsg) {
-              reasonMsg = addMessage(fullReasoning, "reasoning");
-            } else {
-              reasonMsg.textContent = fullReasoning;
-            }
-            scrollToBottom();
+          if (c.type === "reasoning") {
+            reasoning += c.text;
+            if (!reasonEl) reasonEl = addMsg(reasoning, "reasoning");
+            else reasonEl.textContent = reasoning;
+            scroll();
+          } else if (c.type === "content") {
+            full += c.text;
+            if (!aiEl) aiEl = addMsg(full, "ai");
+            else aiEl.innerHTML = md(full);
+            scroll();
+          } else if (c.type === "error") {
+            addMsg(c.text, "error");
+          } else if (c.type === "system") {
+            addMsg(c.text, "system");
+          } else if (c.type === "skill") {
+            addMsg(c.text, "ai");
+            full = c.text;
           }
-          else if (chunk.type === "content") {
-            fullResponse += chunk.text;
-            if (!aiMsg) {
-              aiMsg = addMessage(fullResponse, "ai");
-            } else {
-              aiMsg.innerHTML = formatMarkdown(fullResponse);
-            }
-            scrollToBottom();
-          }
-          else if (chunk.type === "error") {
-            addMessage(chunk.text, "error");
-          }
-          else if (chunk.type === "system") {
-            addMessage(chunk.text, "system");
-          }
-          else if (chunk.type === "skill") {
-            addMessage(chunk.text, "ai");
-            fullResponse = chunk.text;
-          }
-        } catch (e) { /* skip bad JSON */ }
+        } catch (e) {}
       }
     }
 
-    // Voice
-    if (fullResponse && voiceEnabled) {
+    if (full && voiceEnabled) {
       fetch("/api/voice/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: fullResponse }),
+        body: JSON.stringify({ text: full }),
       }).catch(() => {});
     }
-
   } catch (e) {
-    addMessage(`[ERROR] ${e.message}`, "error");
+    addMsg(e.message, "error");
   }
 
   isStreaming = false;
@@ -242,82 +183,58 @@ async function sendMessage() {
   document.getElementById("input").focus();
 }
 
-function addMessage(text, type) {
+function addMsg(text, type) {
   const chat = document.getElementById("chat");
   const div = document.createElement("div");
-  div.className = `message ${type}`;
-
-  if (type === "ai") {
-    div.innerHTML = formatMarkdown(text);
-  } else {
-    div.textContent = text;
-  }
-
+  div.className = "message " + type;
+  div.innerHTML = type === "ai" ? md(text) : esc(text);
   chat.appendChild(div);
-  scrollToBottom();
+  scroll();
   return div;
 }
 
-function scrollToBottom() {
-  const chat = document.getElementById("chat");
-  chat.scrollTop = chat.scrollHeight;
+function scroll() {
+  const c = document.getElementById("chat");
+  c.scrollTop = c.scrollHeight;
 }
 
-// ── Markdown-lite ────────────────────────────────────────────────
+// markdown (minimal)
 
-function formatMarkdown(text) {
-  let html = escapeHtml(text);
-
-  // Code blocks
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
-    `<pre><code>${code.trim()}</code></pre>`
-  );
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  // Bold
-  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-
-  // Italic
-  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-
-  return html;
+function md(text) {
+  let h = esc(text);
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_, l, c) => "<pre><code>" + c.trim() + "</code></pre>");
+  h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+  h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  h = h.replace(/\*(.+?)\*/g, "<em>$1</em>");
+  return h;
 }
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
+function esc(t) {
+  const d = document.createElement("div");
+  d.textContent = t;
+  return d.innerHTML;
 }
 
-// ── Mode Selection ───────────────────────────────────────────────
+// mode
 
 function setMode(mode) {
   currentMode = mode;
-  document.querySelectorAll(".mode-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.mode === mode);
+  document.querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.mode === mode);
   });
 }
 
-// ── Actions ──────────────────────────────────────────────────────
+// actions
 
 function toggleVoice() {
   voiceEnabled = !voiceEnabled;
-  const btn = document.getElementById("voice-btn");
-  btn.textContent = voiceEnabled ? "🔊 Voice" : "🔇 Muted";
-  btn.classList.toggle("active", voiceEnabled);
+  document.getElementById("voice-btn").textContent = "voice: " + (voiceEnabled ? "on" : "off");
 }
 
 async function clearChat() {
-  document.getElementById("chat").innerHTML =
-    '<div class="boot-msg"><div class="boot-line bright">[SYS] Chat cleared.</div></div>';
+  const chat = document.getElementById("chat");
+  chat.innerHTML = '<div id="boot-area"><div class="boot-line hi">cleared</div></div>';
   await fetch("/api/clear", { method: "POST" });
 }
-
-// ── Init ─────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", boot);

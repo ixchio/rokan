@@ -3,86 +3,76 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rokan — The System</title>
+<title>rokan</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <!-- ── Sidebar ─────────────────────────────────────────── -->
+
   <aside id="sidebar">
-    <div class="logo">
-      <div class="logo-letter">R</div>
-      <div class="logo-text">ROKAN</div>
-      <div class="logo-sub">THE SYSTEM</div>
-    </div>
+    <div class="logo">rokan</div>
 
     <div class="sidebar-section">
-      <div class="section-title">SYSTEM</div>
+      <div class="section-label">system</div>
       <div class="stat-row">
-        <span class="stat-label">CPU</span>
+        <span class="stat-label">cpu</span>
         <div class="stat-bar"><div class="stat-fill" id="cpu-fill"></div></div>
-        <span class="stat-value" id="cpu-val">—</span>
+        <span class="stat-value" id="cpu-val"></span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">RAM</span>
+        <span class="stat-label">ram</span>
         <div class="stat-bar"><div class="stat-fill" id="ram-fill"></div></div>
-        <span class="stat-value" id="ram-val">—</span>
+        <span class="stat-value" id="ram-val"></span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">DSK</span>
+        <span class="stat-label">disk</span>
         <div class="stat-bar"><div class="stat-fill" id="disk-fill"></div></div>
-        <span class="stat-value" id="disk-val">—</span>
+        <span class="stat-value" id="disk-val"></span>
       </div>
     </div>
 
     <div class="sidebar-section">
-      <div class="section-title">MODELS</div>
-      <div class="model-row" id="model-primary"><span class="dot"></span> Primary</div>
-      <div class="model-row" id="model-reasoning"><span class="dot"></span> Reasoning</div>
-      <div class="model-row" id="model-fast"><span class="dot"></span> Fast</div>
-      <div class="model-row" id="model-code"><span class="dot"></span> Code</div>
+      <div class="section-label">models</div>
+      <div class="model-row" id="model-primary"><span class="dot"></span>primary</div>
+      <div class="model-row" id="model-reasoning"><span class="dot"></span>reasoning</div>
+      <div class="model-row" id="model-fast"><span class="dot"></span>fast</div>
+      <div class="model-row" id="model-code"><span class="dot"></span>code</div>
     </div>
 
     <div class="sidebar-section">
-      <div class="section-title">MEMORY</div>
-      <div class="memory-stat" id="mem-count">0 memories</div>
-      <div class="memory-stat" id="session-count">0 sessions</div>
+      <div class="section-label">memory</div>
+      <div class="sidebar-info" id="mem-count">0</div>
+      <div class="sidebar-info" id="session-count">0 sessions</div>
     </div>
 
     <div class="sidebar-section" id="alerts-section" style="display:none">
-      <div class="section-title">ALERTS</div>
+      <div class="section-label">alerts</div>
       <div id="alerts-list"></div>
     </div>
 
     <div class="sidebar-bottom">
-      <button class="sidebar-btn" onclick="toggleVoice()" id="voice-btn" title="Toggle voice">
-        🔊 Voice
-      </button>
-      <button class="sidebar-btn" onclick="clearChat()" title="Clear chat">
-        🗑 Clear
-      </button>
+      <button class="sidebar-btn" onclick="toggleVoice()" id="voice-btn">voice: on</button>
+      <button class="sidebar-btn" onclick="clearChat()">clear</button>
     </div>
   </aside>
 
-  <!-- ── Main ────────────────────────────────────────────── -->
   <main id="main">
     <div id="chat" class="chat-area">
-      <div class="boot-msg" id="boot-area"></div>
+      <div id="boot-area"></div>
     </div>
 
-    <!-- ── Input ───────────────────────────────────────── -->
     <div class="input-area">
       <div class="mode-bar">
-        <button class="mode-btn active" data-mode="normal" onclick="setMode('normal')">Chat</button>
-        <button class="mode-btn" data-mode="think" onclick="setMode('think')">🧠 Think</button>
-        <button class="mode-btn" data-mode="fast" onclick="setMode('fast')">⚡ Fast</button>
-        <button class="mode-btn" data-mode="code" onclick="setMode('code')">💻 Code</button>
+        <button class="mode-btn active" data-mode="normal" onclick="setMode('normal')">default</button>
+        <button class="mode-btn" data-mode="think" onclick="setMode('think')">think</button>
+        <button class="mode-btn" data-mode="fast" onclick="setMode('fast')">fast</button>
+        <button class="mode-btn" data-mode="code" onclick="setMode('code')">code</button>
       </div>
       <div class="input-row">
-        <textarea id="input" placeholder="What do you need?" rows="1"
+        <textarea id="input" placeholder="" rows="1"
                   onkeydown="handleKey(event)" autofocus></textarea>
-        <button id="send-btn" onclick="sendMessage()" title="Send">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+        <button id="send-btn" onclick="sendMessage()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
           </svg>
         </button>
       </div>
