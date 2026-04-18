@@ -1,0 +1,2 @@
+[console_scripts]
+rokan = rokan_cli.main:main

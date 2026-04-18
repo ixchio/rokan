@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include config.yaml
+include install.sh
+recursive-include rokan-* *.py
+recursive-include rokan-* *.md

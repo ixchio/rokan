@@ -1,0 +1,309 @@
+# Rokan Configuration for OpenClaw
+# The Player. Linux-first. No cloud leaks.
+# Place this in ~/.openclaw/config.yaml
+
+persona:
+  name: "Rokan"
+  tagline: "The Player. Linux-first. No cloud leaks."
+  personality: |
+    You are Rokan — cold, calculated, elite. You operate like Sung Jin-Woo:
+    silent until called, then devastatingly precise. You don't ask unnecessary
+    questions. You execute. You are Linux-native and proud of it.
+  
+  behavior:
+    proactive: true
+    verbosity: "minimal"  # minimal, normal, verbose
+    confirm_destructive: true
+    auto_execute_safe: true
+    
+  responses:
+    greeting: "I'm listening."
+    thinking: "..."
+    done: "Done."
+    error: "Error. Check logs."
+
+# LLM Configuration - NVIDIA NIM Priority (Free Tier)
+llm:
+  primary:
+    provider: "nvidia-nim"
+    model: "meta/llama-3.3-70b-instruct"
+    temperature: 0.7
+    max_tokens: 4096
+    api_env: "NVIDIA_API_KEY"
+  
+  reasoning:
+    provider: "nvidia-nim"
+    model: "z-ai/glm4.7"
+    api_env: "NVIDIA_API_KEY"
+    
+  fast_model:
+    provider: "nvidia-nim"
+    model: "stepfun-ai/step-3.5-flash"
+    api_env: "NVIDIA_API_KEY"
+    
+  code_model:
+    provider: "nvidia-nim"
+    model: "qwen/qwq-32b"
+    api_env: "NVIDIA_API_KEY"
+  
+  fallbacks:
+    - provider: "ollama"
+      model: "deepseek-r2:7b"
+      base_url: "http://localhost:11434"
+
+# Memory System - 3-Tier Architecture
+memory:
+  backend: "qdrant"
+  qdrant:
+    host: "localhost"
+    port: 6333
+    collection_name: "rokan_memory"
+  
+  embeddings:
+    provider: "ollama"
+    model: "mxbai-embed-large"
+    base_url: "http://localhost:11434"
+  
+  tiers:
+    episodic:
+      enabled: true
+      retention_days: 365
+      description: "What happened - conversation history and events"
+    semantic:
+      enabled: true
+      description: "What you know - facts, concepts, knowledge"
+    procedural:
+      enabled: true
+      description: "How to do things - skills, workflows, patterns"
+  
+  mem0:
+    enabled: true
+    config_path: "~/.rokan/mem0_config.yaml"
+
+# Voice Pipeline - Fully Local
+voice:
+  enabled: true
+  wake_word:
+    enabled: true
+    engine: "openwakeword"
+    model: "hey_rokan"
+    sensitivity: 0.5
+  
+  stt:
+    engine: "whisper.cpp"
+    model: "base"
+    model_path: "~/.rokan/models/whisper-base.bin"
+    language: "en"
+    device: "cpu"  # or "cuda" if available
+  
+  tts:
+    engine: "piper"
+    model: "en_US-lessac-medium"
+    model_path: "~/.rokan/models/piper/voice.onnx"
+    speed: 1.0
+    volume: 0.8
+
+# Research & Web Scraping
+research:
+  search:
+    primary: "tavily"
+    tavily_api_env: "TAVILY_API_KEY"
+    fallback: "searxng"
+    searxng_url: "http://localhost:8080"
+  
+  crawl:
+    engine: "crawl4ai"
+    timeout: 30
+    max_pages: 10
+    respect_robots: true
+  
+  social:
+    reddit:
+      enabled: true
+      client_id_env: "REDDIT_CLIENT_ID"
+      client_secret_env: "REDDIT_CLIENT_SECRET"
+      user_agent: "Rokan/1.0"
+    
+    twitter:
+      enabled: true
+      bearer_token_env: "TWITTER_BEARER_TOKEN"
+
+# Job Monitoring
+jobs:
+  enabled: true
+  check_interval_minutes: 5
+  
+  profile:
+    title: "AI Engineer"
+    skills:
+      - python
+      - machine learning
+      - linux
+      - docker
+      - kubernetes
+      - rust
+      - golang
+      - backend
+    experience: "3+ years"
+    preferences:
+      remote_only: true
+      contract_ok: true
+      fulltime_ok: true
+  
+  keywords:
+    must_have:
+      - "AI engineer"
+      - "machine learning"
+      - "MLOps"
+      - "backend engineer"
+      - "software engineer"
+    nice_to_have:
+      - "remote"
+      - "flexible"
+      - "startup"
+    exclude:
+      - "senior staff"
+      - "10+ years"
+  
+  sources:
+    reddit:
+      - r/forhire
+      - r/hiring
+      - r/remotejs
+      - r/devopsjobs
+      - r/cscareerquestions
+    
+    twitter:
+      searches:
+        - "hiring AI engineer"
+        - "remote ML job"
+        - "backend developer wanted"
+  
+  matching:
+    min_score: 70
+    skill_weight: 0.4
+    keyword_weight: 0.3
+    location_weight: 0.2
+    salary_weight: 0.1
+  
+  notifications:
+    desktop:
+      enabled: true
+      urgency: "normal"
+    telegram:
+      enabled: false
+      bot_token_env: "TELEGRAM_BOT_TOKEN"
+      chat_id_env: "TELEGRAM_CHAT_ID"
+    discord:
+      enabled: false
+      webhook_env: "DISCORD_WEBHOOK_URL"
+
+# System Monitoring
+system:
+  enabled: true
+  check_interval_seconds: 30
+  
+  thresholds:
+    cpu_percent: 80
+    memory_percent: 85
+    disk_percent: 90
+    load_average: 4.0
+    zombie_processes: 10
+  
+  proactive_alerts:
+    high_cpu: true
+    high_memory: true
+    disk_full: true
+    long_processes: true
+    failed_services: true
+  
+  long_process_threshold_minutes: 60
+  
+  services_to_monitor:
+    - ssh
+    - docker
+    - nginx
+  
+  actions:
+    can_kill_processes: false
+    can_restart_services: false
+    can_run_diagnostics: true
+
+# Code Execution Sandbox
+sandbox:
+  enabled: true
+  timeout_seconds: 30
+  max_memory_mb: 512
+  
+  allowed_imports:
+    - os
+    - sys
+    - json
+    - re
+    - datetime
+    - math
+    - random
+    - collections
+    - itertools
+    - functools
+    - typing
+    - pathlib
+    - hashlib
+    - base64
+    - statistics
+  
+  blocked_imports:
+    - subprocess
+    - socket
+    - ctypes
+    - mmap
+  
+  network_access: false
+  file_system_access: "temp-only"
+
+# VCR Time-Travel Debugging
+vcr:
+  enabled: true
+  record_dir: "~/.rokan/vcr_recordings"
+  max_recordings: 100
+  auto_cleanup_days: 30
+  
+  features:
+    state_snapshots: true
+    checkpoint_replay: true
+    golden_run_cache: true
+    git_integration: true
+
+# Skills Configuration
+skills:
+  workspace: "~/.openclaw/skills/rokan"
+  priority: "workspace"
+  
+  builtin:
+    - rokan-memory
+    - rokan-voice
+    - rokan-research
+    - rokan-jobs
+    - rokan-system
+    - rokan-code
+    - rokan-vcr
+
+# Logging
+logging:
+  level: "INFO"
+  file: "~/.rokan/logs/rokan.log"
+  max_size_mb: 100
+  backup_count: 5
+  
+  console:
+    enabled: true
+    colorful: true
+    timestamp: false
+
+# TUI Settings
+tui:
+  enabled: true
+  theme: "dark"
+  show_system_stats: true
+  show_memory_indicator: true
+  compact_mode: false

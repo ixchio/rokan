@@ -1,0 +1,326 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║              ROKAN — Linux Software Installation Package                  ║
+║              Complete Setup for AI Assistant System v2.0                  ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+NEW FILES CREATED FOR LINUX INSTALLATION:
+==========================================
+
+1. install-rokan.sh
+   - Main installation script for both user and system modes
+   - Creates Python virtual environment
+   - Installs all dependencies
+   - Sets up desktop launcher
+   - Configures systemd service
+   - Creates data directories
+
+2. uninstall-rokan.sh
+   - Safe removal script
+   - Stops services before uninstalling
+   - Offers to keep/remove data
+   - Cleans virtual environment
+
+3. INSTALL.md
+   - Detailed 50+ section installation guide
+   - Troubleshooting section
+   - Configuration instructions
+   - Service management guide
+
+4. README-LINUX-SOFTWARE.md
+   - Features overview for Linux users
+   - Installation methods comparison
+   - File manifest
+   - Quick reference commands
+
+5. QUICKSTART-INSTALL.md
+   - Ultra-simple getting started guide
+   - 30-second installation overview
+   - Common commands reference
+
+6. INSTALLATION-SUMMARY.txt
+   - This file - overview of all changes
+
+
+INSTALLATION METHODS:
+====================
+
+METHOD 1: User Installation (Recommended)
+──────────────────────────────────────────
+cd rokan-skills
+./install-rokan.sh
+
+Creates:
+  ✓ Binary: ~/.local/bin/rokan
+  ✓ Virtual Environment: ~/.local/opt/rokan/venv
+  ✓ Service: ~/.config/systemd/user/rokan.service
+  ✓ Desktop Launcher: ~/.local/share/applications/rokan.desktop
+  ✓ Data Directory: ~/.rokan/
+
+Usage:
+  rokan              # Launch TUI
+  rokan ask "..."    # CLI access
+
+
+METHOD 2: System-Wide Installation
+───────────────────────────────────
+cd rokan-skills
+sudo ./install-rokan.sh system
+
+Creates:
+  ✓ Binary: /usr/local/bin/rokan
+  ✓ Virtual Environment: /opt/rokan/venv
+  ✓ Service: /etc/systemd/system/rokan.service
+  ✓ Desktop Launcher: /usr/share/applications/rokan.desktop
+  ✓ Data Directory: ~/.rokan/ (still per-user)
+
+Usage:
+  Same as user mode but available to all users
+
+
+WHAT THE INSTALLER DOES:
+========================
+
+1. Checks Prerequisites
+   ✓ Verifies Python 3.10+
+   ✓ Checks pip installation
+   ✓ Validates system compatibility
+
+2. Creates Virtual Environment
+   ✓ Isolated Python environment
+   ✓ No system Python pollution
+   ✓ Safe dependency management
+
+3. Installs Dependencies
+   ✓ textual (TUI framework)
+   ✓ openai (API client)
+   ✓ psutil (system monitoring)
+   ✓ click (CLI framework)
+   ✓ pydantic (data validation)
+   ✓ All other requirements
+
+4. Installs Rokan Package
+   ✓ Sets up rokan_cli entry point
+   ✓ Makes "rokan" command available
+   ✓ Installs rokan_tui, rokan_cli modules
+
+5. Creates Launcher Script
+   ✓ Bash wrapper at ~/.local/bin/rokan or /usr/local/bin/rokan
+   ✓ Auto-activates virtual environment
+   ✓ Runs rokan_cli.main automatically
+
+6. Sets Up Desktop Integration
+   ✓ Creates .desktop file
+   ✓ Enables "Rokan" in application menu
+   ✓ Click to launch TUI
+
+7. Configures System Service
+   ✓ Creates systemd service file
+   ✓ Optional auto-start capability
+   ✓ Service logging to journalctl
+
+8. Creates Data Directories
+   ✓ ~/.rokan/logs/
+   ✓ ~/.rokan/cache/
+   ✓ ~/.rokan/data/
+   ✓ ~/.config/rokan/
+
+
+AVAILABLE COMMANDS AFTER INSTALLATION:
+======================================
+
+rokan                          # Launch TUI (main interface)
+rokan ask "question"           # Ask default model
+rokan ask --think "q"          # Deep reasoning (GLM 4.7)
+rokan ask --fast "q"           # Quick answer (Step 3.5)
+rokan ask --code "q"           # Code generation (QwQ 32B)
+rokan status                   # System status report
+rokan models                   # Show model stack
+rokan system                   # Live system metrics
+rokan config                   # Configuration paths
+rokan setup                    # Setup wizard
+rokan --help                   # Show all commands
+
+
+QUICK START STEPS:
+==================
+
+1. Navigate to package:
+   cd "/home/ruzvad/Music/OpenClaw to Rokan/rokan-skills"
+
+2. Make scripts executable:
+   chmod +x install-rokan.sh
+
+3. Run installation:
+   ./install-rokan.sh
+
+4. Follow the prompts (fully automated)
+
+5. Try it:
+   rokan status        # Verify installation
+   rokan              # Launch TUI
+   rokan ask "test"   # Test CLI
+
+
+SYSTEM SERVICE INTEGRATION:
+===========================
+
+Enable Auto-Start (User Mode):
+  systemctl --user enable rokan
+  systemctl --user start rokan
+
+Start Service:
+  systemctl --user start rokan
+
+Stop Service:
+  systemctl --user stop rokan
+
+Check Status:
+  systemctl --user status rokan
+
+View Logs:
+  journalctl --user -u rokan -f
+
+For System Mode, replace "--user" with "sudo"
+
+
+UNINSTALL:
+==========
+
+User installation:
+  cd rokan-skills
+  ./uninstall-rokan.sh
+
+System installation:
+  cd rokan-skills
+  sudo ./uninstall-rokan.sh
+
+Prompts you to keep or remove data directory
+
+
+DIRECTORY STRUCTURE AFTER INSTALL:
+==================================
+
+User Mode (~/.local/):
+  ~/.local/bin/rokan
+  ~/.local/opt/rokan/venv/
+  ~/.local/share/applications/rokan.desktop
+  ~/.config/systemd/user/rokan.service
+
+System Mode (/opt/ and /usr/):
+  /usr/local/bin/rokan
+  /opt/rokan/venv/
+  /usr/share/applications/rokan.desktop
+  /etc/systemd/system/rokan.service
+
+Shared (home directory):
+  ~/.rokan/logs/
+  ~/.rokan/cache/
+  ~/.rokan/data/
+  ~/.config/rokan/
+
+
+TROUBLESHOOTING:
+================
+
+"rokan: command not found"
+  → Add to PATH: export PATH="$HOME/.local/bin:$PATH"
+
+Python version mismatch
+  → Ensure Python 3.10+: python3 --version
+
+Installation permission denied
+  → Make script executable: chmod +x install-rokan.sh
+
+API key errors
+  → Set: export NVIDIA_API_KEY="nvapi-..."
+
+Service won't start
+  → Check logs: journalctl --user -u rokan -f
+
+See INSTALL.md for more detailed troubleshooting
+
+
+FEATURES AFTER INSTALLATION:
+============================
+
+✓ Command-line interface (rokan command everywhere)
+✓ Beautiful terminal UI with system monitoring
+✓ 4 AI models to choose from
+✓ Desktop application launcher
+✓ Optional auto-start service
+✓ Systemd integration with logs
+✓ Python virtual environment isolation
+✓ Automatic dependency management
+✓ Standard Linux directory hierarchy
+✓ Easy uninstallation
+
+
+FILE PERMISSIONS:
+=================
+
+After installation:
+  ~/.local/bin/rokan           → executable (755)
+  rokan.service files          → readable (644)
+  rokan.desktop               → readable (644)
+  data directories            → writable (755)
+
+
+SYSTEM REQUIREMENTS:
+====================
+
+✓ Linux operating system (any distribution)
+✓ Python 3.10 or later
+✓ pip (Python package manager)
+✓ ~500MB disk space
+✓ 2GB RAM minimum (4GB+ recommended)
+
+
+NEXT STEPS:
+===========
+
+1. READ the appropriate guide:
+   - QUICKSTART-INSTALL.md   (fast track - 5 min read)
+   - INSTALL.md              (complete guide - 10 min read)
+   - README-LINUX-SOFTWARE.md (features guide - 10 min read)
+
+2. RUN the installer:
+   cd rokan-skills
+   ./install-rokan.sh
+
+3. VERIFY installation:
+   rokan status
+
+4. LAUNCH the TUI:
+   rokan
+
+5. TRY CLI:
+   rokan ask "What is Linux?"
+
+
+VERIFICATION CHECKLIST:
+=======================
+
+After installation, verify:
+□ rokan command works in terminal
+□ rokan status shows system info
+□ rokan models lists available AI models
+□ rokan ask "test" streams response
+□ rokan --help shows all commands
+□ Desktop launcher appears in app menu
+□ ~/.rokan/ directory exists
+□ Service status is active (if enabled)
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+Rokan is now ready to be installed as a Linux software program.
+
+Start with: cd rokan-skills && ./install-rokan.sh
+
+For guidance, read one of the documentation files:
+- QUICKSTART-INSTALL.md (recommended for new users)
+- INSTALL.md (complete reference)
+
+═══════════════════════════════════════════════════════════════════════════
