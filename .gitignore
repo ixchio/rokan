@@ -8,3 +8,4 @@ __pycache__/
 electron/node_modules/
 electron/dist/
 electron/renderer/
+*.egg-info/
