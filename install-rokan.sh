@@ -88,23 +88,52 @@ check_python() {
     ok "Python $PY_VER"
 }
 
-# ── Step 2: Install system deps (mpv for voice) ────────────────
+# ── Step 2: Install system deps (GTK window + voice) ───────────
 install_system_deps() {
-    info "Checking system dependencies..."
+    info "Installing system dependencies for native desktop app..."
 
-    if command -v mpv &> /dev/null; then
-        ok "mpv (voice playback) already installed"
-    else
-        warn "mpv not found — installing for voice playback..."
-        if command -v apt &> /dev/null; then
-            sudo apt install -y mpv 2>/dev/null && ok "mpv installed" || warn "Could not install mpv (voice will be silent)"
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install -y mpv 2>/dev/null && ok "mpv installed" || warn "Could not install mpv"
-        elif command -v pacman &> /dev/null; then
-            sudo pacman -S --noconfirm mpv 2>/dev/null && ok "mpv installed" || warn "Could not install mpv"
-        else
-            warn "Unknown package manager. Install mpv manually for voice: sudo apt install mpv"
+    if command -v apt &> /dev/null; then
+        # Ubuntu / Debian
+        PKGS=""
+
+        # GTK + WebKit for native window (THE important ones)
+        dpkg -s python3-gi &>/dev/null       || PKGS="$PKGS python3-gi"
+        dpkg -s python3-gi-cairo &>/dev/null  || PKGS="$PKGS python3-gi-cairo"
+        dpkg -s gir1.2-gtk-3.0 &>/dev/null   || PKGS="$PKGS gir1.2-gtk-3.0"
+
+        # Try webkit 4.1 first (Ubuntu 22.04+), fallback to 4.0
+        if ! dpkg -s gir1.2-webkit2-4.1 &>/dev/null && ! dpkg -s gir1.2-webkit2-4.0 &>/dev/null; then
+            PKGS="$PKGS gir1.2-webkit2-4.1"
         fi
+
+        # Voice playback
+        command -v mpv &>/dev/null || PKGS="$PKGS mpv"
+
+        if [ -n "$PKGS" ]; then
+            info "Installing:$PKGS"
+            sudo apt update -qq 2>/dev/null
+            sudo apt install -y $PKGS 2>/dev/null && ok "System packages installed" || {
+                fail "Could not install some packages. Run manually:"
+                echo "  sudo apt install$PKGS"
+            }
+        else
+            ok "All system packages present"
+        fi
+
+    elif command -v dnf &> /dev/null; then
+        # Fedora
+        sudo dnf install -y python3-gobject gtk3 webkit2gtk4.1 mpv 2>/dev/null \
+            && ok "System packages installed" \
+            || warn "Install manually: sudo dnf install python3-gobject gtk3 webkit2gtk4.1 mpv"
+
+    elif command -v pacman &> /dev/null; then
+        # Arch
+        sudo pacman -S --noconfirm python-gobject gtk3 webkit2gtk-4.1 mpv 2>/dev/null \
+            && ok "System packages installed" \
+            || warn "Install manually: sudo pacman -S python-gobject gtk3 webkit2gtk-4.1 mpv"
+    else
+        warn "Unknown distro. Install these manually:"
+        echo "  python3-gi, gir1.2-gtk-3.0, gir1.2-webkit2-4.1, mpv"
     fi
 }
 
@@ -114,8 +143,9 @@ install_rokan() {
     mkdir -p "$(dirname "$VENV")"
 
     if [ ! -d "$VENV" ]; then
-        python3 -m venv "$VENV"
-        ok "Venv created: $VENV"
+        # --system-site-packages: lets venv access system GTK/WebKit bindings
+        python3 -m venv --system-site-packages "$VENV"
+        ok "Venv created: $VENV (with system site-packages for GTK)"
     else
         ok "Venv exists: $VENV"
     fi
@@ -138,11 +168,13 @@ create_launcher() {
     cat > "${BIN_DIR}/rokan" << LAUNCHER
 #!/bin/bash
 # Rokan — The System
-# Auto-generated launcher. Activates venv and runs rokan.
+# Auto-generated launcher. Loads env, activates venv, runs rokan.
 
-# Load API key from config if not already set
-if [ -z "\$NVIDIA_API_KEY" ] && [ -f "$DATA_DIR/.env" ]; then
-    export \$(grep -v '^#' "$DATA_DIR/.env" | xargs) 2>/dev/null
+# Load API keys
+if [ -f "$DATA_DIR/.env" ]; then
+    set -a
+    source "$DATA_DIR/.env"
+    set +a
 fi
 
 source "$VENV/bin/activate"
@@ -165,12 +197,13 @@ Type=Application
 Name=Rokan
 GenericName=AI Assistant
 Comment=F.R.I.D.A.Y.-class ambient intelligence for your machine
-Exec=bash -c 'if [ -f $DATA_DIR/.env ]; then export \$(grep -v "^#" $DATA_DIR/.env | xargs) 2>/dev/null; fi; source $VENV/bin/activate && python -m rokan_tui.app'
+Exec=bash -c 'if [ -f $DATA_DIR/.env ]; then set -a; source $DATA_DIR/.env; set +a; fi; source $VENV/bin/activate && python -m rokan_gui.window'
 Icon=rokan
-Terminal=true
+Terminal=false
 Categories=Development;Utility;System;
 Keywords=AI;Assistant;LLM;System;Monitor;
 StartupNotify=true
+StartupWMClass=rokan
 DESKTOP
 
     chmod 644 "${DESKTOP_DIR}/rokan.desktop"

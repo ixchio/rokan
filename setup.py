@@ -31,18 +31,21 @@ setup(
     ],
     python_requires=">=3.10",
     install_requires=[
-        # Core (everything works with just these)
+        # Core
         "pydantic>=2.9.0",
         "pyyaml>=6.0.1",
         "psutil>=6.0.0",
         "openai>=1.12.0",
         "click>=8.1.0",
-        # TUI
+        # GUI desktop app
+        "flask>=3.0.0",
+        # TUI (terminal fallback)
         "textual>=0.85.0",
-        # Voice (optional but included — works cross-platform)
+        # Voice
         "edge-tts>=6.1.12",
     ],
     extras_require={
+        "window": ["pywebview>=5.0"],
         "search": ["duckduckgo-search>=6.0.0"],
         "research": [
             "tavily-python>=0.5.0",
@@ -68,6 +71,9 @@ setup(
         "console_scripts": [
             "rokan=rokan_cli.main:main",
         ],
+    },
+    package_data={
+        "rokan_gui": ["static/*"],
     },
     include_package_data=True,
     zip_safe=False,

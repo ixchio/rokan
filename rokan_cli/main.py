@@ -15,18 +15,39 @@ from pathlib import Path
 def cli(ctx):
     """Rokan — The System. Ambient intelligence for your machine."""
     if ctx.invoked_subcommand is None:
-        ctx.invoke(tui)
+        # Default: launch GUI desktop app, fallback to TUI
+        try:
+            import flask
+            ctx.invoke(gui)
+        except ImportError:
+            ctx.invoke(tui)
 
 
 @cli.command()
 def tui():
-    """Launch the Rokan TUI (default)"""
+    """Launch the Rokan TUI (terminal interface)"""
     try:
         from rokan_tui.app import run
         run()
     except ImportError as e:
         click.echo(f"[ERROR] Missing dependency: {e}")
         click.echo("Run: pip install -r requirements.txt")
+    except Exception as e:
+        click.echo(f"[ERROR] {e}")
+
+
+@cli.command()
+def gui():
+    """Launch Rokan as a native desktop app (GTK window)"""
+    try:
+        from rokan_gui.window import launch
+        launch()
+    except SystemExit:
+        raise
+    except ImportError as e:
+        click.echo(f"[ERROR] Missing dependency: {e}")
+        click.echo("Run: pip install flask pywebview")
+        click.echo("And: sudo apt install python3-gi gir1.2-webkit2-4.1")
     except Exception as e:
         click.echo(f"[ERROR] {e}")
 
