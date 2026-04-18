@@ -169,10 +169,11 @@ class SystemSkill(Skill):
         try:
             import psutil
 
+            def gb(b): return round(b / (1024**3), 1)
+
             cpu = psutil.cpu_percent(interval=1)
             mem = psutil.virtual_memory()
             disk = psutil.disk_usage("/")
-            load = psutil.getloadavg()
 
             # Get top processes
             procs = []
@@ -187,18 +188,16 @@ class SystemSkill(Skill):
             top_5 = procs[:5]
 
             status = (
-                f"[SYSTEM STATUS]\n"
-                f"CPU: {cpu}% ({psutil.cpu_count()} cores) | "
-                f"Load: {load[0]:.2f}, {load[1]:.2f}, {load[2]:.2f}\n"
-                f"RAM: {mem.percent}% used ({mem.used // (1024**3)}GB / {mem.total // (1024**3)}GB) | "
-                f"Available: {mem.available // (1024**3)}GB\n"
-                f"Disk: {disk.percent}% used ({disk.used // (1024**3)}GB / {disk.total // (1024**3)}GB)\n"
+                f"[SYSTEM STATUS — EXACT NUMBERS, DO NOT ROUND OR CHANGE THESE]\n"
+                f"CPU: {cpu}% used, {psutil.cpu_count()} cores\n"
+                f"RAM: total={gb(mem.total)}GB, used={gb(mem.used)}GB, free={gb(mem.available)}GB, {mem.percent}% used\n"
+                f"Disk: total={gb(disk.total)}GB, used={gb(disk.used)}GB, free={gb(disk.free)}GB, {disk.percent}% used\n"
             )
 
             if top_5:
                 status += "\nTop processes by CPU:\n"
                 for p in top_5:
-                    status += f"  - {p['name']} (PID {p['pid']}): CPU {p['cpu_percent']:.1f}%, RAM {p['memory_percent']:.1f}%\n"
+                    status += f"  {p['name']} (PID {p['pid']}): CPU {p['cpu_percent']:.1f}%, RAM {p['memory_percent']:.1f}%\n"
 
             return SkillResult(content=status, inject_as_context=True)
 

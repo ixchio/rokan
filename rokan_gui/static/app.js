@@ -114,6 +114,7 @@ async function sendMessage() {
 
   isStreaming = true;
   document.getElementById("send-btn").disabled = true;
+  document.getElementById("avatar-strip").classList.add("talking");
 
   let aiEl = null, reasonEl = null;
   let full = "", reasoning = "";
@@ -180,6 +181,7 @@ async function sendMessage() {
 
   isStreaming = false;
   document.getElementById("send-btn").disabled = false;
+  document.getElementById("avatar-strip").classList.remove("talking");
   document.getElementById("input").focus();
 }
 

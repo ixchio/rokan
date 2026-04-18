@@ -43,6 +43,8 @@ setup(
         "textual>=0.85.0",
         # Voice
         "edge-tts>=6.1.12",
+        # Search (web search, no API key needed)
+        "duckduckgo-search>=6.0.0",
     ],
     extras_require={
         "window": ["pywebview>=5.0"],

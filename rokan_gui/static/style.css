@@ -166,6 +166,57 @@ body {
   min-width: 0;
 }
 
+/* avatar */
+
+#avatar-strip {
+  position: relative;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--border);
+  background: #0a0a0a;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+#avatar-img {
+  height: 100px;
+  width: 100px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+
+#avatar-img.hidden { display: none; }
+
+#avatar-strip.talking #avatar-img {
+  opacity: 1;
+}
+
+#avatar-pulse {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  pointer-events: none;
+  transition: border-color 0.3s;
+}
+
+#avatar-strip.talking #avatar-pulse {
+  border-color: #333;
+  animation: pulse 1.5s ease infinite;
+}
+
+@keyframes pulse {
+  0%   { transform: scale(1); opacity: 0.6; }
+  50%  { transform: scale(1.15); opacity: 0; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
 .chat-area {
   flex: 1;
   overflow-y: auto;

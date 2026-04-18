@@ -43,6 +43,34 @@ def index():
     return send_from_directory(str(STATIC), "index.html")
 
 
+@app.route("/api/avatar")
+def avatar():
+    """Serve user avatar from ~/.rokan/avatar.png or default."""
+    user_avatar = Path.home() / ".rokan" / "avatar.png"
+    if user_avatar.exists():
+        return send_from_directory(str(user_avatar.parent), user_avatar.name)
+
+    # Check for jpg/webp too
+    for ext in ("jpg", "jpeg", "webp", "gif"):
+        alt = user_avatar.with_suffix("." + ext)
+        if alt.exists():
+            return send_from_directory(str(alt.parent), alt.name)
+
+    # Default: serve built-in placeholder
+    default = STATIC / "avatar-default.png"
+    if default.exists():
+        return send_from_directory(str(STATIC), "avatar-default.png")
+
+    # Generate a minimal SVG circle as last resort
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
+        '<circle cx="50" cy="50" r="48" fill="#1a1a1a" stroke="#333" stroke-width="1"/>'
+        '<text x="50" y="58" text-anchor="middle" fill="#555" '
+        'font-family="monospace" font-size="14">R</text></svg>'
+    )
+    return Response(svg, mimetype="image/svg+xml")
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     """Stream a chat response via SSE."""
@@ -84,6 +112,9 @@ def status():
     sys_info = {}
     try:
         import psutil
+
+        def gb(b): return round(b / (1024**3), 1)
+
         cpu = psutil.cpu_percent(interval=0.5)
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
@@ -91,11 +122,12 @@ def status():
             "cpu": round(cpu, 1),
             "cpu_cores": psutil.cpu_count(),
             "ram_percent": round(mem.percent, 1),
-            "ram_used_gb": round(mem.used / (1024**3), 1),
-            "ram_total_gb": round(mem.total / (1024**3), 1),
+            "ram_used_gb": gb(mem.used),
+            "ram_total_gb": gb(mem.total),
+            "ram_free_gb": gb(mem.available),
             "disk_percent": round(disk.percent, 1),
-            "disk_used_gb": round(disk.used / (1024**3), 1),
-            "disk_total_gb": round(disk.total / (1024**3), 1),
+            "disk_used_gb": gb(disk.used),
+            "disk_total_gb": gb(disk.total),
         }
     except ImportError:
         pass
